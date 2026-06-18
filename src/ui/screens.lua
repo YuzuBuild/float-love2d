@@ -80,13 +80,13 @@ end
 UI.DepartureScreen = {}
 
 function UI.DepartureScreen.new(higgsLine, condition, accentColor, onDepart, onTutorial)
-    return {
-        higgsLine = higgsLine,
-        condition = condition,
-        accentColor = accentColor,
-        onDepart = onDepart,
-        onTutorial = onTutorial,
-    }
+    local self = setmetatable({}, {__index = UI.DepartureScreen})
+    self.higgsLine = higgsLine
+    self.condition = condition
+    self.accentColor = accentColor
+    self.onDepart = onDepart
+    self.onTutorial = onTutorial
+    return self
 end
 
 function UI.DepartureScreen:draw()
