@@ -353,9 +353,9 @@ function Renderer.drawCardBack(x, y, w, h, accentName)
 
     Renderer.drawShadow(x, y, w, h, 0.32)
 
-    -- Base
+    -- Base — deep accent-tinted dark
     roundedRect(x, y, w, h, radius, "fill",
-        accent.r * 0.22, accent.g * 0.22, accent.b * 0.22, 1)
+        accent.r * 0.18, accent.g * 0.18, accent.b * 0.18, 1)
 
     -- Border
     love.graphics.setColor(accent.r, accent.g, accent.b, 0.75)
@@ -364,34 +364,69 @@ function Renderer.drawCardBack(x, y, w, h, accentName)
 
     -- Inner border
     local inset = 5
-    love.graphics.setColor(accent.r, accent.g, accent.b, 0.45)
-    love.graphics.setLineWidth(1)
+    love.graphics.setColor(accent.r, accent.g, accent.b, 0.3)
+    love.graphics.setLineWidth(0.8)
     love.graphics.rectangle("line",
         x + inset, y + inset, w - inset * 2, h - inset * 2,
         radius - 1, radius - 1, radius - 1, radius - 1)
 
-    -- Diamond pattern across the face
-    love.graphics.setColor(accent.r, accent.g, accent.b, 0.35)
-    love.graphics.setLineWidth(1)
-    local step = 8
-    for row = 0, math.floor(h / step) do
-        for col = 0, math.floor(w / step) do
-            local cx = x + 4 + col * step + (row % 2) * (step / 2)
-            local cy = y + 4 + row * step
-            if cx < x + w - 4 and cy < y + h - 4 then
-                love.graphics.points(cx, cy)
-            end
+    -- Hokusai-style wave pattern: layered curved lines across the card
+    love.graphics.setLineWidth(1.2)
+    love.graphics.setLineStyle("smooth")
+
+    local innerX = x + inset + 2
+    local innerY = y + inset + 2
+    local innerW = w - (inset + 2) * 2
+    local innerH = h - (inset + 2) * 2
+
+    -- Draw wave crests as polylines (simulate curves with segments)
+    local waveRows = 4
+    local waveAmp = 5
+    local rowH = innerH / waveRows
+    local segments = 12  -- segments per wave row
+
+    for row = 0, waveRows - 1 do
+        local baseY = innerY + row * rowH + rowH / 2
+        local alpha = 0.12 + (row / waveRows) * 0.2
+        love.graphics.setColor(accent.r, accent.g, accent.b, alpha)
+
+        -- Build wave points
+        local points = {}
+        local numWaves = 2  -- number of wave crests per row
+        local totalSegs = numWaves * segments
+        for i = 0, totalSegs do
+            local t = i / totalSegs
+            local px = innerX + t * innerW
+            -- Sine-based wave with row offset
+            local phase = row * 0.7
+            local py = baseY + math.sin(t * math.pi * 2 * numWaves + phase) * waveAmp
+            table.insert(points, px)
+            table.insert(points, py)
         end
+        love.graphics.line(points)
     end
 
-    -- Center motif: a small accent-tinted pip area
-    local motifR = 5
-    love.graphics.setColor(accent.r * 0.4, accent.g * 0.4, accent.b * 0.4, 0.9)
-    love.graphics.circle("fill", x + w / 2, y + h / 2 - 4, motifR)
-    love.graphics.setColor(accent.r, accent.g, accent.b, 0.9)
-    love.graphics.setLineWidth(1)
-    love.graphics.circle("line", x + w / 2, y + h / 2 - 4, motifR)
+    -- Center motif: a small wave-circle (like a sea-foam focal point)
+    local motifCx = x + w / 2
+    local motifCy = y + h / 2
+    local motifR = 7
 
+    -- Outer ring
+    love.graphics.setColor(accent.r, accent.g, accent.b, 0.6)
+    love.graphics.setLineWidth(1.2)
+    love.graphics.circle("line", motifCx, motifCy, motifR)
+
+    -- Inner fill
+    love.graphics.setColor(accent.r * 0.35, accent.g * 0.35, accent.b * 0.35, 0.9)
+    love.graphics.circle("fill", motifCx, motifCy, motifR - 2)
+
+    -- Small accent dot in center
+    love.graphics.setColor(accent.r, accent.g, accent.b, 0.8)
+    love.graphics.circle("fill", motifCx, motifCy, 1.5)
+
+    -- Reset line style
+    love.graphics.setLineStyle("rough")
+    love.graphics.setLineWidth(1)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
