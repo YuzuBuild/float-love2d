@@ -250,6 +250,8 @@ function UI.GameScreen:draw()
         else
             self:drawBetting(w, h, ar, ag, ab)
         end
+    elseif engine.phase == Engine.Phase.TIDE then
+        self:drawTide(w, h, ar, ag, ab)
     elseif engine.phase == Engine.Phase.PLAYER_TURN then
         self:drawActionsBar(w, h, ar, ag, ab)
     elseif engine.phase == Engine.Phase.DEALER_TURN then
@@ -259,8 +261,8 @@ function UI.GameScreen:draw()
         love.graphics.print(label, centerX(label, love.graphics.getFont(), w), h - 70)
     elseif engine.phase == Engine.Phase.HAND_RESULT then
         self:drawHandResult(w, h, ar, ag, ab)
-    elseif engine.phase == Engine.Phase.CARD_DRAFT then
-        self:drawCardDraft(w, h, ar, ag, ab)
+    elseif engine.phase == Engine.Phase.SALVAGE then
+        self:drawSalvage(w, h, ar, ag, ab)
     elseif engine.phase == Engine.Phase.SHOP then
         self:drawShop(w, h, ar, ag, ab)
     elseif engine.phase == Engine.Phase.GAME_OVER then
@@ -483,7 +485,62 @@ function UI.GameScreen:drawHandResult(w, h, ar, ag, ab)
     end
 end
 
-function UI.GameScreen:drawCardDraft(w, h, ar, ag, ab)
+function UI.GameScreen:drawTide(w, h, ar, ag, ab)
+    local engine = self.engine
+    local bet = self._pendingBet or 0
+
+    love.graphics.setColor(0, 0, 0, 0.5)
+    love.graphics.rectangle("fill", 0, h * 0.25, w, h * 0.5)
+
+    love.graphics.setColor(1, 1, 1, 0.5)
+    love.graphics.setFont(love.graphics.newFont(11))
+    local title = "THE TIDE"
+    love.graphics.print(title, centerX(title, love.graphics.getFont(), w), h * 0.27)
+
+    love.graphics.setColor(1, 1, 1, 0.3)
+    love.graphics.setFont(love.graphics.newFont(10))
+    local sub = "Bet: " .. bet .. " — choose your tide"
+    love.graphics.print(sub, centerX(sub, love.graphics.getFont(), w), h * 0.27 + 18)
+
+    -- Three tide options
+    local cardW = math.min(120, (w - 60) / 3)
+    local cardH = 160
+    local spacing = 12
+    local totalW = 3 * cardW + 2 * spacing
+    local startX = (w - totalW) / 2
+    local cardY = h * 0.35
+
+    local tides = {
+        { key = "rising",  name = "RISING",  desc = "+20% payout\nDealer draws\none extra card" },
+        { key = "falling", name = "FALLING", desc = "-20% payout\nSee dealer's\nhole card" },
+        { key = "flat",    name = "FLAT",    desc = "No modification\nSafe passage" },
+    }
+
+    for i, tide in ipairs(tides) do
+        local cx = startX + (i - 1) * (cardW + spacing)
+        love.graphics.setColor(ar * 0.1, ag * 0.1, ab * 0.1, 1)
+        love.graphics.rectangle("fill", cx, cardY, cardW, cardH, 10, 10, 10, 10)
+        love.graphics.setColor(ar, ag, ab, 0.3)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", cx, cardY, cardW, cardH, 10, 10, 10, 10)
+
+        -- Name
+        love.graphics.setColor(ar, ag, ab, 0.8)
+        love.graphics.setFont(love.graphics.newFont(14))
+        love.graphics.print(tide.name, cx + (cardW - love.graphics.getFont():getWidth(tide.name)) / 2, cardY + 12)
+
+        -- Description
+        love.graphics.setColor(1, 1, 1, 0.4)
+        love.graphics.setFont(love.graphics.newFont(10))
+        local descLines = {}
+        for line in tide.desc:gmatch("[^\n]+") do table.insert(descLines, line) end
+        for j, line in ipairs(descLines) do
+            love.graphics.print(line, cx + (cardW - love.graphics.getFont():getWidth(line)) / 2, cardY + 44 + (j - 1) * 14)
+        end
+    end
+end
+
+function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     local engine = self.engine
     local candidates = engine.draftCandidates
     if #candidates == 0 then return end
@@ -491,45 +548,82 @@ function UI.GameScreen:drawCardDraft(w, h, ar, ag, ab)
     love.graphics.setColor(0, 0, 0, 0.6)
     love.graphics.rectangle("fill", 0, 0, w, h)
 
-    -- Title
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.setFont(love.graphics.newFont(11))
-    local title = "SEED THE DECK"
-    love.graphics.print(title, centerX(title, love.graphics.getFont(), w), h * 0.15)
+    local title = "SALVAGE"
+    love.graphics.print(title, centerX(title, love.graphics.getFont(), w), h * 0.08)
 
     love.graphics.setColor(1, 1, 1, 0.3)
     love.graphics.setFont(love.graphics.newFont(10))
-    local sub = "Choose a card to add to the shared deck"
-    love.graphics.print(sub, centerX(sub, love.graphics.getFont(), w), h * 0.15 + 18)
+    local sub = "Take the flotsam, or seed the reef for chips"
+    love.graphics.print(sub, centerX(sub, love.graphics.getFont(), w), h * 0.08 + 18)
 
-    -- Card options
-    local cardW = Renderer.CARD_W * 1.3
-    local cardH = Renderer.CARD_H * 1.3
-    local spacing = 16
-    local totalW = 3 * cardW + 2 * spacing
-    local startX = (w - totalW) / 2
-    local cardY = h * 0.35
+    -- Left option: Take Flotsam
+    local cardW = math.min(140, (w - 60) / 2)
+    local cardH = 100
+    local leftX = (w / 2) - cardW - 8
+    local rightX = (w / 2) + 8
+    local cardY = h * 0.18
+
+    love.graphics.setColor(ar * 0.1, ag * 0.1, ab * 0.1, 1)
+    love.graphics.rectangle("fill", leftX, cardY, cardW, cardH, 10, 10, 10, 10)
+    love.graphics.setColor(ar, ag, ab, 0.3)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", leftX, cardY, cardW, cardH, 10, 10, 10, 10)
+
+    love.graphics.setColor(ar, ag, ab, 0.8)
+    love.graphics.setFont(love.graphics.newFont(14))
+    love.graphics.print("FLOTSAM", leftX + (cardW - love.graphics.getFont():getWidth("FLOTSAM")) / 2, cardY + 12)
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.setFont(love.graphics.newFont(10))
+    local fLines = wrapText("+1 Flotsam — bank it, keep the deck clean", love.graphics.getFont(), cardW - 12)
+    for j, line in ipairs(fLines) do
+        love.graphics.print(line, leftX + (cardW - love.graphics.getFont():getWidth(line)) / 2, cardY + 36 + (j - 1) * 14)
+    end
+
+    -- Right option: Seed the Reef (pick one of 3 voyage cards)
+    love.graphics.setColor(ar * 0.1, ag * 0.1, ab * 0.1, 1)
+    love.graphics.rectangle("fill", rightX, cardY, cardW, cardH, 10, 10, 10, 10)
+    love.graphics.setColor(ar, ag, ab, 0.3)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", rightX, cardY, cardW, cardH, 10, 10, 10, 10)
+
+    love.graphics.setColor(ar, ag, ab, 0.8)
+    love.graphics.setFont(love.graphics.newFont(14))
+    love.graphics.print("SEED THE REEF", rightX + (cardW - love.graphics.getFont():getWidth("SEED THE REEF")) / 2, cardY + 12)
+
+    local handsLeft = Run.HandsPerAct - Run.currentActHandNumber(engine.run)
+    local bonus = math.max(0, handsLeft) * 2
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.setFont(love.graphics.newFont(10))
+    local rLines = wrapText("+" .. bonus .. " chips now — but poison the deck", love.graphics.getFont(), cardW - 12)
+    for j, line in ipairs(rLines) do
+        love.graphics.print(line, rightX + (cardW - love.graphics.getFont():getWidth(line)) / 2, cardY + 36 + (j - 1) * 14)
+    end
+
+    -- Voyage card choices (only if reef is selected — show 3 cards below)
+    local vCardW = Renderer.CARD_W * 1.1
+    local vCardH = Renderer.CARD_H * 1.1
+    local vSpacing = 12
+    local vTotalW = 3 * vCardW + 2 * vSpacing
+    local vStartX = (w - vTotalW) / 2
+    local vCardY = h * 0.38
+
+    love.graphics.setColor(1, 1, 1, 0.3)
+    love.graphics.setFont(love.graphics.newFont(9))
+    local reefTitle = "PICK A CARD TO SEED:"
+    love.graphics.print(reefTitle, centerX(reefTitle, love.graphics.getFont(), w), vCardY - 18)
 
     for i, vtype in ipairs(candidates) do
-        local cx = startX + (i - 1) * (cardW + spacing)
-        -- Draw a fake voyage card for display
+        local cx = vStartX + (i - 1) * (vCardW + vSpacing)
         local fakeCard = { voyageEffect = vtype, fogRevealed = false, fogValue = nil, isFaceDown = false }
         if vtype == "fogBank" then fakeCard.fogValue = math.random(4, 9) end
-        Renderer.drawVoyageCardFace(fakeCard, cx, cardY, cardW, cardH, engine.run.accentColor)
+        Renderer.drawVoyageCardFace(fakeCard, cx, vCardY, vCardW, vCardH, engine.run.accentColor)
 
-        -- Name below
-        love.graphics.setColor(1, 1, 1, 0.5)
-        love.graphics.setFont(love.graphics.newFont(12))
+        love.graphics.setColor(1, 1, 1, 0.4)
+        love.graphics.setFont(love.graphics.newFont(9))
         local name = VoyageCard.DisplayName[vtype]
-        love.graphics.print(name, cx + (cardW - love.graphics.getFont():getWidth(name)) / 2, cardY + cardH + 8)
-
-        -- Description
-        love.graphics.setColor(1, 1, 1, 0.3)
-        love.graphics.setFont(love.graphics.newFont(10))
-        local descLines = wrapText(VoyageCard.Description[vtype], love.graphics.getFont(), cardW + 20)
-        for j, line in ipairs(descLines) do
-            love.graphics.print(line, cx + (cardW - love.graphics.getFont():getWidth(line)) / 2, cardY + cardH + 26 + (j - 1) * 14)
-        end
+        love.graphics.print(name, cx + (vCardW - love.graphics.getFont():getWidth(name)) / 2, vCardY + vCardH + 4)
     end
 end
 
@@ -791,6 +885,24 @@ function UI.GameScreen:mousepressed(mx, my, button)
             end
         end
 
+    elseif engine.phase == Engine.Phase.TIDE then
+        -- Three tide choices
+        local cardW = math.min(120, (w - 60) / 3)
+        local cardH = 160
+        local spacing = 12
+        local totalW = 3 * cardW + 2 * spacing
+        local startX = (w - totalW) / 2
+        local cardY = h * 0.35
+
+        local tides = { "rising", "falling", "flat" }
+        for i, tide in ipairs(tides) do
+            local cx = startX + (i - 1) * (cardW + spacing)
+            if inRect(mx, my, cx, cardY, cardW, cardH) then
+                engine:chooseTide(tide)
+                return
+            end
+        end
+
     elseif engine.phase == Engine.Phase.PLAYER_TURN then
         local btnW = 80
         local btnH = 44
@@ -820,20 +932,34 @@ function UI.GameScreen:mousepressed(mx, my, button)
             end
         end
 
-    elseif engine.phase == Engine.Phase.CARD_DRAFT then
+    elseif engine.phase == Engine.Phase.SALVAGE then
         local candidates = engine.draftCandidates
-        if #candidates == 0 then return end
-        local cardW = Renderer.CARD_W * 1.3
-        local cardH = Renderer.CARD_H * 1.3
-        local spacing = 16
-        local totalW = 3 * cardW + 2 * spacing
-        local startX = (w - totalW) / 2
-        local cardY = h * 0.35
-        for i, _ in ipairs(candidates) do
-            local cx = startX + (i - 1) * (cardW + spacing)
-            if inRect(mx, my, cx, cardY, cardW, cardH) then
-                engine:selectDraftCard(candidates[i])
-                return
+        local cardW = math.min(140, (w - 60) / 2)
+        local cardH = 100
+        local leftX = (w / 2) - cardW - 8
+        local rightX = (w / 2) + 8
+        local cardY = h * 0.18
+
+        -- Flotsam (left)
+        if inRect(mx, my, leftX, cardY, cardW, cardH) then
+            engine:chooseSalvage("flotsam")
+            return
+        end
+
+        -- Reef cards (below)
+        if #candidates > 0 then
+            local vCardW = Renderer.CARD_W * 1.1
+            local vCardH = Renderer.CARD_H * 1.1
+            local vSpacing = 12
+            local vTotalW = 3 * vCardW + 2 * vSpacing
+            local vStartX = (w - vTotalW) / 2
+            local vCardY = h * 0.38
+            for i, vtype in ipairs(candidates) do
+                local cx = vStartX + (i - 1) * (vCardW + vSpacing)
+                if inRect(mx, my, cx, vCardY, vCardW, vCardH) then
+                    engine:chooseSalvage("reef", vtype)
+                    return
+                end
             end
         end
 
@@ -891,6 +1017,17 @@ function UI.GameScreen:keypressed(key)
             local minBet = engine:effectiveMinimumBet()
             engine:placeBet(self._betAmount or minBet)
             self._betAmount = nil
+        end
+    elseif engine.phase == Engine.Phase.TIDE then
+        if key == "1" then engine:chooseTide("rising")
+        elseif key == "2" then engine:chooseTide("falling")
+        elseif key == "3" then engine:chooseTide("flat")
+        end
+    elseif engine.phase == Engine.Phase.SALVAGE then
+        if key == "f" then engine:chooseSalvage("flotsam")
+        elseif key == "1" then engine:chooseSalvage("reef", engine.draftCandidates[1])
+        elseif key == "2" then engine:chooseSalvage("reef", engine.draftCandidates[2])
+        elseif key == "3" then engine:chooseSalvage("reef", engine.draftCandidates[3])
         end
     elseif engine.phase == Engine.Phase.GAME_OVER then
         if key == "return" or key == "space" then

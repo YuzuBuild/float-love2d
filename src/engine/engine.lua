@@ -13,12 +13,26 @@ Engine.__index = Engine
 -- Phase constants
 Engine.Phase = {
     BETTING = "betting",
+    TIDE = "tide",             -- NEW: pre-hand risk/reward choice
     PLAYER_TURN = "playerTurn",
     DEALER_TURN = "dealerTurn",
     HAND_RESULT = "handResult",
-    CARD_DRAFT = "cardDraft",
+    SALVAGE = "salvage",       -- NEW: post-hand flotsam-or-reef choice
     SHOP = "shop",
     GAME_OVER = "gameOver",
+}
+
+-- Tide choices (pre-hand)
+Engine.Tide = {
+    RISING = "rising",   -- +20% payout, dealer draws one extra card at end
+    FALLING = "falling", -- -20% payout, player sees dealer hole card
+    FLAT = "flat",       -- no modification
+}
+
+-- Salvage choices (post-hand)
+Engine.Salvage = {
+    FLOTSAM = "flotsam",   -- +1 Flotsam, no deck modification
+    REEF = "reef",         -- seed voyage card, gain +2 chips per remaining hand this watch
 }
 
 -- Wharf event types
@@ -49,6 +63,8 @@ function Engine.new(run, meta)
     self.activeWharfEvent = nil
     self.knownWatersCard = nil
     self.lastInsuranceRefund = 0
+    self.activeTide = nil       -- NEW: tide choice for current hand
+    self.reefBonus = 0          -- NEW: accumulated reef chips for this watch
 
     -- Private state
     self.nextBetFree = false
@@ -167,14 +183,38 @@ function Engine:placeBet(amount)
 
     self.chipStack = self.chipStack - deduction
     self.nextBetFree = false
-    self:beginDeal(amount)
+    self._pendingBet = amount
+
+    -- NEW: Go to tide phase (pre-hand risk/reward choice)
+    self.phase = Engine.Phase.TIDE
+end
+
+-------------------------------------------------------------------------------
+-- Tide phase (NEW)
+-------------------------------------------------------------------------------
+
+-- Player chooses tide; then deal begins
+function Engine:chooseTide(tide)
+    if self.phase ~= Engine.Phase.TIDE then return end
+    self.activeTide = tide
+
+    -- Apply falling tide: reveal hole card immediately
+    local holeFaceDown = self.run.runCondition ~= "clearSkies"
+    if tide == Engine.Tide.FALLING then
+        holeFaceDown = false
+    end
+
+    self:beginDeal(self._pendingBet or 0, holeFaceDown)
+    self._pendingBet = nil
 end
 
 -------------------------------------------------------------------------------
 -- Deal
 -------------------------------------------------------------------------------
 
-function Engine:beginDeal(bet)
+function Engine:beginDeal(bet, holeFaceDown)
+    holeFaceDown = holeFaceDown ~= false  -- default true unless explicitly false
+
     self.playerHands = {{}}
     self.currentBets = {bet}
     self.activeHandIndex = 1
@@ -183,13 +223,12 @@ function Engine:beginDeal(bet)
     self.playerHitThisHand = false
     self.theHardWayEligible = false
     self.lastInsuranceRefund = 0
+    self._risingExtraDrawn = false  -- NEW: reset rising tide flag
     table.insert(self.betHistory, bet)
 
     table.insert(self.playerHands[1], self:draw())
     table.insert(self.dealerCards, self:draw())
     table.insert(self.playerHands[1], self:draw())
-
-    local holeFaceDown = self.run.runCondition ~= "clearSkies"
     table.insert(self.dealerCards, self:draw(holeFaceDown))
 
     if Run.hasModifier(self.run, "cardShark") and not self.run.cardSharkUsedThisAct then
@@ -339,6 +378,16 @@ function Engine:runDealerLogic()
             table.insert(self.dealerCards, self:draw())
         end
     end
+
+    -- NEW: Rising tide — dealer draws one extra card after normal logic
+    if self.activeTide == Engine.Tide.RISING and not self._risingExtraDrawn then
+        self._risingExtraDrawn = true
+        local card = self:draw()
+        table.insert(self.dealerCards, card)
+        if card.voyageEffect == "undertow" then
+            table.insert(self.dealerCards, self:draw())
+        end
+    end
 end
 
 function Engine:shouldDealerDraw()
@@ -403,6 +452,13 @@ function Engine:resolveAllHands()
 
         if outcome == "playerWin" or outcome == "dealerFust" then
             local payout = bet * 2
+
+            -- NEW: Tide payout modifier
+            if self.activeTide == Engine.Tide.RISING then
+                payout = math.floor(payout * 1.2)
+            elseif self.activeTide == Engine.Tide.FALLING then
+                payout = math.floor(payout * 0.8)
+            end
 
             if Run.hasModifier(self.run, "tide") then
                 if self.run.currentHandNumber % 2 ~= 0 then
@@ -571,17 +627,31 @@ function Engine:acknowledgeResult()
         return
     end
 
+    -- NEW: Go to salvage phase (flotsam or reef)
     self.draftCandidates = VoyageCard.draftOffer()
-    self.phase = Engine.Phase.CARD_DRAFT
+    self.phase = Engine.Phase.SALVAGE
 end
 
-function Engine:selectDraftCard(voyageType)
-    if self.phase ~= Engine.Phase.CARD_DRAFT then return end
-    local card = Card.newVoyage(voyageType)
-    self.deck:insertVoyageCard(card)
-    self.run.voyageCardsSeeded = self.run.voyageCardsSeeded + 1
+-- NEW: Salvage phase — player chooses flotsam or reef
+function Engine:chooseSalvage(choice, voyageType)
+    if self.phase ~= Engine.Phase.SALVAGE then return end
+
+    if choice == Engine.Salvage.FLOTSAM then
+        -- +1 Flotsam, no deck modification
+        self.run._salvageFlotsam = (self.run._salvageFlotsam or 0) + 1
+    elseif choice == Engine.Salvage.REEF and voyageType then
+        -- Seed voyage card, gain +2 chips per remaining hand this watch
+        local card = Card.newVoyage(voyageType)
+        self.deck:insertVoyageCard(card)
+        self.run.voyageCardsSeeded = self.run.voyageCardsSeeded + 1
+        local handsLeft = Run.HandsPerAct - Run.currentActHandNumber(self.run)
+        local bonus = math.max(0, handsLeft) * 2
+        self.chipStack = self.chipStack + bonus
+        self.run.chipStack = self.chipStack
+    end
+
     self.draftCandidates = {}
-    self:advanceAfterDraft()
+    self:advanceAfterSalvage()
 end
 
 function Engine:effectiveActCount()
@@ -590,11 +660,11 @@ function Engine:effectiveActCount()
 end
 
 function Engine:effectiveWinThreshold()
-    if self.run.runCondition == "shortPassage" then return 650 end
+    if self.run.runCondition == "shortPassage" then return 400 end
     return Run.winThreshold()
 end
 
-function Engine:advanceAfterDraft()
+function Engine:advanceAfterSalvage()
     if self.run.currentHandNumber % Run.HandsPerAct == 0 then
         if self.run.currentAct < self:effectiveActCount() then
             self.run.currentAct = self.run.currentAct + 1
@@ -903,6 +973,8 @@ function Engine:resetForBetting()
     self.activeHandIndex = 1
     self.dealerCards = {}
     self.cardSharkReady = false
+    self.activeTide = nil         -- NEW: reset tide
+    self._risingExtraDrawn = false -- NEW: reset rising flag
 
     if self.run.runCondition == "knownWaters" then
         if #self.deck.cards < Deck.reshuffleThreshold then

@@ -102,17 +102,17 @@ test("squall locks aces to 1", function()
     assertEquals(hv.soft, 9, "squall(3)+ace(1)+5 = 9")
 end)
 
--- Test 8: Run constants
+-- Test 8: Run constants — refined loop
 test("run constants", function()
     assertEquals(Run.StartingChips, 200)
-    assertEquals(Run.HandsPerAct, 8)
-    assertEquals(Run.ActCount, 5)
-    assertEquals(Run.WatchThresholds[1], 300)
-    assertEquals(Run.WatchThresholds[5], 2500)
+    assertEquals(Run.HandsPerAct, 5)
+    assertEquals(Run.ActCount, 4)
+    assertEquals(Run.WatchThresholds[1], 150)
+    assertEquals(Run.WatchThresholds[4], 1000)
 end)
 
--- Test 9: Engine basic flow — place bet and deal
-test("engine place bet and deal", function()
+-- Test 9: Engine basic flow — place bet goes to TIDE phase
+test("engine place bet enters tide", function()
     local meta = Meta.load()
     local run = Run.new({ startingChips = meta:startingChips() })
     local engine = Engine.new(run, meta)
@@ -121,10 +121,34 @@ test("engine place bet and deal", function()
     assertEquals(engine.chipStack, 200)
 
     engine:placeBet(20)
-    assertEquals(engine.phase, "playerTurn")
+    -- NEW: should be in tide phase, not playerTurn
+    assertEquals(engine.phase, "tide", "should be in tide phase after bet")
     assertEquals(engine.chipStack, 180)  -- 200 - 20
+end)
+
+-- Test 9b: Engine choose tide then deal
+test("engine choose tide deals", function()
+    local meta = Meta.load()
+    local run = Run.new({ startingChips = meta:startingChips() })
+    local engine = Engine.new(run, meta)
+
+    engine:placeBet(20)
+    engine:chooseTide("flat")
+    assertEquals(engine.phase, "playerTurn", "should be playerTurn after flat tide")
     assertEquals(#engine:activeHand(), 2)  -- two cards dealt
     assertEquals(#engine.dealerCards, 2)  -- dealer has 2 cards
+    assertEquals(engine.activeTide, "flat")
+end)
+
+-- Test 9c: Falling tide reveals hole card
+test("engine falling tide reveals hole card", function()
+    local meta = Meta.load()
+    local run = Run.new({ startingChips = meta:startingChips() })
+    local engine = Engine.new(run, meta)
+
+    engine:placeBet(20)
+    engine:chooseTide("falling")
+    assertEquals(engine.dealerCards[2].isFaceDown, false, "falling tide should reveal hole card")
 end)
 
 -- Test 10: Modifier shop offer excludes active

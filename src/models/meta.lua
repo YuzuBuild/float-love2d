@@ -134,6 +134,8 @@ function Meta:addFlotsam(run)
     if run.outcome == "won" then earned = earned + 5 end
     if Run_peek(run) > self.personalChipRecord then earned = earned + 2 end
     if #run.newModifiersUsed > 0 then earned = earned + 1 end
+    -- NEW: salvage flotsam earned during run
+    if run._salvageFlotsam then earned = earned + run._salvageFlotsam end
 
     run.flotsamEarned = earned
     self.totalFlotsamEarned = self.totalFlotsamEarned + earned

@@ -38,7 +38,7 @@ Run.ConditionEffectSummary = {
     clearSkies = "Dealer's hole card is always face up.",
     springTide = "Pushes pay out in your favour.",
     theLedgerIsOpen = "All modifier costs reduced by 15.",
-    shortPassage = "Two watches. Win condition: 650 chips.",
+    shortPassage = "Two watches. Win condition: 400 chips.",
     knownWaters = "You see the top deck card before each bet.",
 }
 
@@ -50,14 +50,14 @@ function Run.randomAccent()
     return Run.AccentColors[math.random(#Run.AccentColors)]
 end
 
--- Constants
+-- Constants — refined loop: 20 hands, 4 watches of 5
 Run.StartingChips = 200
 Run.MinimumBet = 10
-Run.HandsPerAct = 8
-Run.ActCount = 5
+Run.HandsPerAct = 5
+Run.ActCount = 4
 Run.MaxModifiers = 3
 Run.LoanAmount = 75
-Run.WatchThresholds = { 300, 500, 900, 1500, 2500 }
+Run.WatchThresholds = { 150, 350, 650, 1000 }
 
 function Run.departureThreshold(act)
     local idx = math.max(1, math.min(act, #Run.WatchThresholds))
