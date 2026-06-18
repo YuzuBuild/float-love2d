@@ -1,0 +1,5 @@
+build/
+*.love
+*.apk
+.ipa
+.love2d-build/
