@@ -107,8 +107,8 @@ test("run constants", function()
     assertEquals(Run.StartingChips, 200)
     assertEquals(Run.HandsPerAct, 5)
     assertEquals(Run.ActCount, 4)
-    assertEquals(Run.WatchThresholds[1], 150)
-    assertEquals(Run.WatchThresholds[4], 1000)
+    assertEquals(Run.WatchThresholds[1], 120)
+    assertEquals(Run.WatchThresholds[4], 750)
 end)
 
 -- Test 9: Engine basic flow — place bet goes to TIDE phase

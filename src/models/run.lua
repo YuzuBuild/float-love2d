@@ -38,7 +38,7 @@ Run.ConditionEffectSummary = {
     clearSkies = "Dealer's hole card is always face up.",
     springTide = "Pushes pay out in your favour.",
     theLedgerIsOpen = "All modifier costs reduced by 15.",
-    shortPassage = "Two watches. Win condition: 400 chips.",
+    shortPassage = "Two watches. Win condition: 350 chips.",
     knownWaters = "You see the top deck card before each bet.",
 }
 
@@ -57,7 +57,7 @@ Run.HandsPerAct = 5
 Run.ActCount = 4
 Run.MaxModifiers = 3
 Run.LoanAmount = 75
-Run.WatchThresholds = { 150, 350, 650, 1000 }
+Run.WatchThresholds = { 120, 260, 450, 750 }
 
 function Run.departureThreshold(act)
     local idx = math.max(1, math.min(act, #Run.WatchThresholds))

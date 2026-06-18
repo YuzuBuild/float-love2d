@@ -10,6 +10,7 @@ local Dialogue = require("src.dialogue")
 local Renderer = require("src.card_renderer")
 local Audio = require("src.audio.audio")
 local Artefacts = require("src.models.artefacts")
+local Animation = require("src.animation")
 
 local UI = {}
 
@@ -207,6 +208,10 @@ function UI.GameScreen.new(engine, meta, onNewRun)
     self.scrollY = 0
     self.showJournal = false   -- NEW: journal overlay toggle
     self.journalScrollY = 0
+    self.anim = Animation.new()  -- NEW: card animation system
+    self.lastDealerCardCount = 0
+    self.lastPlayerCardCount = 0
+    self.fustFlashTriggered = false
     return self
 end
 
@@ -221,13 +226,67 @@ function UI.GameScreen:update(dt)
         self.fustFlash = math.max(0, self.fustFlash - dt * 2.5)
     end
 
+    -- NEW: Tick card animations
+    local w, h = love.graphics.getDimensions()
+    self.anim:setDeckSource(w + 80, h / 2)
+    self.anim:update(dt)
+
+    -- Detect new cards and register them with animation
+    local engine = self.engine
+    local cx, cy = w / 2, h / 2
+
+    -- Dealer cards
+    for i, card in ipairs(engine.dealerCards) do
+        local dx = cx + (i - (#engine.dealerCards + 1) / 2) * Renderer.CARD_SPACING
+        local dy = cy - Renderer.DEALER_Y - Renderer.CARD_H / 2
+        self.anim:setTarget(card.id, dx, dy, card.isFaceDown)
+
+        -- Detect hole card reveal (face-down → face-up transition)
+        if not card.isFaceDown and i == 2 then
+            local state = self.anim:getState(card.id)
+            if state and state.faceDown and not state.flipping then
+                self.anim:triggerFlip(card.id)
+            end
+        end
+    end
+
+    -- Player hands
+    local ph = engine.playerHands
+    local handCount = #ph
+    for hIdx, hand in ipairs(ph) do
+        local handOffset = handCount == 2 and (hIdx == 1 and -120 or 120) or 0
+        for i, card in ipairs(hand) do
+            local dx = cx + handOffset + (i - (#hand + 1) / 2) * Renderer.CARD_SPACING
+            local dy = cy + Renderer.PLAYER_Y - Renderer.CARD_H / 2
+            self.anim:setTarget(card.id, dx, dy, card.isFaceDown)
+        end
+    end
+
+    -- Detect fust for flash
+    if engine.phase == Engine.Phase.HAND_RESULT then
+        local outcome = engine._pendingOutcome
+        if outcome == "playerFust" and not self.fustFlashTriggered then
+            self.fustFlash = 1.0
+            self.fustFlashTriggered = true
+        end
+    elseif engine.phase ~= Engine.Phase.HAND_RESULT then
+        self.fustFlashTriggered = false
+    end
+
     -- Auto-advance result after delay
-    if self.engine.phase == Engine.Phase.HAND_RESULT then
+    if engine.phase == Engine.Phase.HAND_RESULT then
         self.resultTimer = self.resultTimer + dt
         if self.resultTimer > 1.8 then
             self.resultTimer = 0
-            self.engine:acknowledgeResult()
+            engine:acknowledgeResult()
         end
+    else
+        self.resultTimer = 0
+    end
+
+    -- Clear animation when table clears
+    if engine.phase == Engine.Phase.BETTING then
+        self.anim:clear()
     end
 end
 
@@ -291,27 +350,56 @@ function UI.GameScreen:drawCards(w, h)
     local cx = w / 2
     local cy = h / 2
 
-    -- Dealer cards
+    -- Dealer cards — use animated positions
     local dc = engine.dealerCards
     local dTotal = #dc
     for i, card in ipairs(dc) do
-        local dx = cx + (i - (dTotal + 1) / 2) * Renderer.CARD_SPACING
-        local dy = cy - Renderer.DEALER_Y - Renderer.CARD_H / 2
-        Renderer.drawCard(card, dx, dy, Renderer.CARD_W, Renderer.CARD_H, accentName)
+        local targetDx = cx + (i - (dTotal + 1) / 2) * Renderer.CARD_SPACING
+        local targetDy = cy - Renderer.DEALER_Y - Renderer.CARD_H / 2
+
+        -- Use animated position if available
+        local animState = self.anim:getState(card.id)
+        local dx, dy = targetDx, targetDy
+        local scaleX = 1
+        if animState then
+            dx, dy = animState.x, animState.y
+            scaleX = self.anim:getScaleX(card.id)
+            -- Use animated face-down state during flip
+            if animState.flipping then
+                card = { suit = card.suit, rank = card.rank, isFaceDown = animState.faceDown,
+                         voyageEffect = card.voyageEffect, fogValue = card.fogValue, fogRevealed = card.fogRevealed }
+            end
+        end
+
+        -- Apply scaleX for flip
+        if scaleX ~= 1 then
+            love.graphics.push()
+            love.graphics.translate(dx + Renderer.CARD_W / 2, dy + Renderer.CARD_H / 2)
+            love.graphics.scale(scaleX, 1)
+            love.graphics.translate(-Renderer.CARD_W / 2, -Renderer.CARD_H / 2)
+            Renderer.drawCard(card, 0, 0, Renderer.CARD_W, Renderer.CARD_H, accentName)
+            love.graphics.pop()
+        else
+            Renderer.drawCard(card, dx, dy, Renderer.CARD_W, Renderer.CARD_H, accentName)
+        end
     end
 
-    -- Player hands
+    -- Player hands — use animated positions
     local ph = engine.playerHands
     local handCount = #ph
     for hIdx, hand in ipairs(ph) do
-        local handOffset = 0
-        if handCount == 2 then
-            handOffset = hIdx == 1 and -120 or 120
-        end
+        local handOffset = handCount == 2 and (hIdx == 1 and -120 or 120) or 0
         local total = #hand
         for i, card in ipairs(hand) do
-            local dx = cx + handOffset + (i - (total + 1) / 2) * Renderer.CARD_SPACING
-            local dy = cy + Renderer.PLAYER_Y - Renderer.CARD_H / 2
+            local targetDx = cx + handOffset + (i - (total + 1) / 2) * Renderer.CARD_SPACING
+            local targetDy = cy + Renderer.PLAYER_Y - Renderer.CARD_H / 2
+
+            local animState = self.anim:getState(card.id)
+            local dx, dy = targetDx, targetDy
+            if animState then
+                dx, dy = animState.x, animState.y
+            end
+
             Renderer.drawCard(card, dx, dy, Renderer.CARD_W, Renderer.CARD_H, accentName)
         end
     end
@@ -332,7 +420,8 @@ function UI.GameScreen:drawHUD(w, h, ar, ag, ab)
     -- Watch / hand (top-right)
     love.graphics.setColor(1, 1, 1, 0.4)
     love.graphics.setFont(love.graphics.newFont(11))
-    local watchLabel = "WATCH " .. engine.run.currentAct
+    local watchId = engine:watchIdentity()
+    local watchLabel = "WATCH " .. engine.run.currentAct .. " — " .. (watchId.name or "")
     love.graphics.print(watchLabel, w - 20 - love.graphics.getFont():getWidth(watchLabel), 56)
 
     local handLabel = Run.currentActHandNumber(engine.run) .. " / " .. Run.HandsPerAct
@@ -674,7 +763,8 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
 
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.setFont(love.graphics.newFont(13))
-    local watchLabel = "Watch " .. engine.run.currentAct .. " of " .. engine:effectiveActCount()
+    local watchId = engine:watchIdentity()
+    local watchLabel = "Watch " .. engine.run.currentAct .. " of " .. engine:effectiveActCount() .. " — " .. (watchId.name or "")
     love.graphics.print(watchLabel, centerX(watchLabel, love.graphics.getFont(), w), 74)
 
     -- NEW: Wharf ambient text (watch-based transformation)

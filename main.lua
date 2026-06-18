@@ -30,6 +30,18 @@ function love.load(arg)
         return
     end
 
+    -- Simulation mode: love . --sim 1000
+    if arg and arg[1] == "--sim" then
+        local numRuns = tonumber(arg[2]) or 1000
+        local ok, err = pcall(function()
+            local Sim = require("test.sim_balance")
+            Sim.run(numRuns)
+        end)
+        if not ok then print("Sim error: " .. tostring(err)) end
+        love.event.quit()
+        return
+    end
+
     -- Load meta-progression
     meta = Meta.load()
 

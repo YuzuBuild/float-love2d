@@ -198,10 +198,16 @@ function Engine:chooseTide(tide)
     if self.phase ~= Engine.Phase.TIDE then return end
     self.activeTide = tide
 
-    -- Apply falling tide: reveal hole card immediately
+    -- Determine hole card visibility
+    -- Clear Skies condition: always visible
+    -- Falling tide: visible
+    -- Watch 3 (Fog): always hidden (overrides Clear Skies and Falling)
     local holeFaceDown = self.run.runCondition ~= "clearSkies"
     if tide == Engine.Tide.FALLING then
         holeFaceDown = false
+    end
+    if self:watchHasTrait("fogWatch") then
+        holeFaceDown = true  -- Fog watch overrides everything
     end
 
     self:beginDeal(self._pendingBet or 0, holeFaceDown)
@@ -213,7 +219,10 @@ end
 -------------------------------------------------------------------------------
 
 function Engine:beginDeal(bet, holeFaceDown)
-    holeFaceDown = holeFaceDown ~= false  -- default true unless explicitly false
+    -- Default: hole card face down unless clearSkies or explicitly face up
+    if holeFaceDown == nil then
+        holeFaceDown = self.run.runCondition ~= "clearSkies"
+    end
 
     self.playerHands = {{}}
     self.currentBets = {bet}
@@ -410,8 +419,33 @@ function Engine:shouldDealerDraw()
 end
 
 -------------------------------------------------------------------------------
--- Resolution — the big one (all modifier interactions)
+-- NEW: Watch identity system
+-- Each watch has a mechanical identity that changes how hands play.
 -------------------------------------------------------------------------------
+
+Engine.WatchIdentity = {
+    [1] = { name = "Calm",       -- Standard. Dealer stands soft 17.
+    },
+    [2] = { name = "Tide",       -- Odd hands pay 1.5×, even hands pay 0.75×.
+    },
+    [3] = { name = "Fog",        -- Hole card always hidden. Reef seeds 2 cards instead of 1.
+    },
+    [4] = { name = "The Reaches", -- All modifier payouts ×2, all modifier costs ×2.
+    },
+}
+
+function Engine:watchIdentity()
+    return Engine.WatchIdentity[self.run.currentAct] or { name = "Unknown" }
+end
+
+-- Check if current watch has a specific identity trait
+function Engine:watchHasTrait(trait)
+    local act = self.run.currentAct
+    if trait == "tideOdds" then return act == 2 end
+    if trait == "fogWatch" then return act == 3 end
+    if trait == "amplified" then return act == 4 end
+    return false
+end
 
 function Engine:resolveAllHands()
     -- Fog Bank: reveal all fog cards
@@ -453,11 +487,20 @@ function Engine:resolveAllHands()
         if outcome == "playerWin" or outcome == "dealerFust" then
             local payout = bet * 2
 
-            -- NEW: Tide payout modifier
+            -- Tide choice payout modifier
             if self.activeTide == Engine.Tide.RISING then
                 payout = math.floor(payout * 1.2)
             elseif self.activeTide == Engine.Tide.FALLING then
                 payout = math.floor(payout * 0.8)
+            end
+
+            -- NEW: Watch 2 (Tide) — odd hands 1.5×, even hands 0.75×
+            if self:watchHasTrait("tideOdds") then
+                if self.run.currentHandNumber % 2 ~= 0 then
+                    payout = math.floor(payout * 1.5)
+                else
+                    payout = math.floor(payout * 0.75)
+                end
             end
 
             if Run.hasModifier(self.run, "tide") then
@@ -503,6 +546,16 @@ function Engine:resolveAllHands()
             end
             if Run.hasModifier(self.run, "patientCapital") and not self.playerHitThisHand and i == 1 then
                 payout = payout + 15
+            end
+
+            -- NEW: Watch 4 (The Reaches) — modifier payouts amplified
+            -- Double the bonus portion (everything above the base 2× payout)
+            if self:watchHasTrait("amplified") then
+                local basePayout = bet * 2
+                if payout > basePayout then
+                    local bonus = payout - basePayout
+                    payout = basePayout + bonus * 2
+                end
             end
 
             chipsGained = chipsGained + payout
@@ -651,10 +704,18 @@ function Engine:chooseSalvage(choice, voyageType)
             self.lastArtefactFound = nil
         end
     elseif choice == Engine.Salvage.REEF and voyageType then
-        -- Seed voyage card, gain +2 chips per remaining hand this watch
+        -- Seed voyage card(s), gain +2 chips per remaining hand this watch
         local card = Card.newVoyage(voyageType)
         self.deck:insertVoyageCard(card)
         self.run.voyageCardsSeeded = self.run.voyageCardsSeeded + 1
+
+        -- NEW: Watch 3 (Fog) — reef seeds an extra card
+        if self:watchHasTrait("fogWatch") then
+            local card2 = Card.newVoyage(voyageType)
+            self.deck:insertVoyageCard(card2)
+            self.run.voyageCardsSeeded = self.run.voyageCardsSeeded + 1
+        end
+
         local handsLeft = Run.HandsPerAct - Run.currentActHandNumber(self.run)
         local bonus = math.max(0, handsLeft) * 2
         self.chipStack = self.chipStack + bonus
@@ -672,7 +733,7 @@ function Engine:effectiveActCount()
 end
 
 function Engine:effectiveWinThreshold()
-    if self.run.runCondition == "shortPassage" then return 400 end
+    if self.run.runCondition == "shortPassage" then return 350 end
     return Run.winThreshold()
 end
 
@@ -776,6 +837,11 @@ function Engine:shopPrice(modType)
         base = math.max(0, base - 15)
     end
 
+    -- NEW: Watch 4 (The Reaches) — modifier costs doubled
+    if self:watchHasTrait("amplified") then
+        base = base * 2
+    end
+
     -- Check if player can afford any offer
     local canAffordAny = false
     for _, t in ipairs(self.frozenShopOffer) do
@@ -783,6 +849,7 @@ function Engine:shopPrice(modType)
         if self.run.runCondition == "theLedgerIsOpen" then
             b = math.max(0, b - 15)
         end
+        if self:watchHasTrait("amplified") then b = b * 2 end
         if self.chipStack >= b then canAffordAny = true; break end
     end
 
