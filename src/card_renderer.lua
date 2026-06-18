@@ -245,34 +245,98 @@ function Renderer.drawVoyageCardFace(card, x, y, w, h, accentName)
         x + inset, y + inset, w - inset * 2, h - inset * 2,
         radius - 1, radius - 1, radius - 1, radius - 1)
 
-    -- Decide what to show
+    -- Decide icon to draw
     local effect = card.voyageEffect
     local VoyageCard = require("src.models.voyage_card")
 
-    local displayText
-    if effect == "fogBank" then
-        displayText = card.fogRevealed and tostring(card.fogValue or 7) or "?"
+    -- Icon center coordinates
+    local icx = x + w / 2
+    local icy = y + h / 2 - 6
+
+    love.graphics.setColor(accent.r, accent.g, accent.b, 1)
+    love.graphics.setLineWidth(2.4)
+    love.graphics.setLineStyle("smooth")
+
+    if effect == "deadweight" then
+        -- Anchor shape: ring + crossbar
+        love.graphics.circle("line", icx, icy, 13)
+        love.graphics.line(icx - 13, icy, icx + 13, icy)
+        -- Small stem on top
+        love.graphics.line(icx, icy - 13, icx, icy - 18)
+        -- Flukes (triangular tips at bottom)
+        love.graphics.polygon("fill",
+            icx - 13, icy + 4,
+            icx - 19, icy + 12,
+            icx - 6,  icy + 9)
+        love.graphics.polygon("fill",
+            icx + 13, icy + 4,
+            icx + 19, icy + 12,
+            icx + 6,  icy + 9)
+    elseif effect == "undertow" then
+        -- Downward swirl: two concentric arcs above a down arrow
+        love.graphics.arc("line", icx, icy - 4, 12, math.pi * 1.7, math.pi * 2.3)
+        love.graphics.arc("line", icx, icy - 4, 8, math.pi * 1.7, math.pi * 2.3)
+        -- Pull-down arrow
+        love.graphics.line(icx, icy + 6, icx, icy + 18)
+        love.graphics.polygon("fill",
+            icx - 6, icy + 12,
+            icx + 6, icy + 12,
+            icx,     icy + 20)
+    elseif effect == "squall" then
+        -- Storm: zigzag lightning bolt + small dashes
+        love.graphics.polygon("fill",
+            icx - 2, icy - 14,
+            icx - 7, icy + 2,
+            icx - 1, icy + 2,
+            icx - 6, icy + 16,
+            icx + 4, icy - 2,
+            icx - 1, icy - 2,
+            icx + 3, icy - 14)
+        -- Small dashes flanking
+        love.graphics.line(icx - 16, icy - 4, icx - 12, icy - 4)
+        love.graphics.line(icx + 12, icy - 4, icx + 16, icy - 4)
+        love.graphics.line(icx - 16, icy + 8, icx - 12, icy + 8)
+        love.graphics.line(icx + 12, icy + 8, icx + 16, icy + 8)
+    elseif effect == "fogBank" then
+        -- Fog: stacked horizontal arcs (clouds)
+        if card.fogRevealed then
+            -- Revealed: a circle with the fog value
+            local valStr = tostring(card.fogValue or 7)
+            local vf = love.graphics.newFont(20)
+            love.graphics.setFont(vf)
+            local vw = vf:getWidth(valStr)
+            love.graphics.setColor(accent.r, accent.g, accent.b, 1)
+            love.graphics.print(valStr, icx - vw / 2, icy - 10)
+        else
+            -- Hidden: question-mark-like arc cluster
+            love.graphics.line(icx - 14, icy - 6, icx + 14, icy - 6)
+            love.graphics.line(icx - 12, icy,     icx + 12, icy)
+            love.graphics.line(icx - 10, icy + 6, icx + 10, icy + 6)
+            love.graphics.setFont(love.graphics.newFont(20))
+            local qw = love.graphics.newFont(20):getWidth("?")
+            love.graphics.print("?", icx - qw / 2, icy - 22)
+        end
     else
-        -- Use short text labels instead of Unicode icons
-        local labels = { deadweight = "13", undertow = "0", squall = "3" }
-        displayText = labels[effect] or "?"
+        -- Unknown: question mark
+        love.graphics.setFont(love.graphics.newFont(26))
+        local qw = love.graphics.newFont(26):getWidth("?")
+        love.graphics.setColor(accent.r, accent.g, accent.b, 1)
+        love.graphics.print("?", icx - qw / 2, icy - 14)
     end
 
-    -- Big icon centered
-    local bigFont = love.graphics.newFont(26)
-    love.graphics.setFont(bigFont)
-    love.graphics.setColor(accent.r, accent.g, accent.b, 1)
-    local tw = bigFont:getWidth(displayText)
-    love.graphics.print(displayText, x + (w - tw) / 2, y + (h - 26) / 2 - 10)
+    love.graphics.setLineStyle("rough")
+    love.graphics.setLineWidth(1)
 
-    -- Name at the bottom
+    -- Name at the bottom — single label (the salvage screen also draws the
+    -- display name below the card, so we drop the redundant label here to
+    -- avoid double-labeling in the viewport)
+    love.graphics.setColor(0.85, 0.85, 0.85, 0.55)
+    local nameFont = love.graphics.newFont(8)
+    love.graphics.setFont(nameFont)
     local name = VoyageCard.DisplayName[effect] or ""
-    local labelFont = love.graphics.newFont(8)
-    love.graphics.setFont(labelFont)
     local upper = name:upper()
-    local nw = labelFont:getWidth(upper)
-    love.graphics.setColor(0.85, 0.85, 0.85, 0.85)
-    love.graphics.print(upper, x + (w - nw) / 2, y + h - 16)
+    local nw = nameFont:getWidth(upper)
+    love.graphics.print(upper, x + (w - nw) / 2, y + h - 12)
 
     love.graphics.setColor(1, 1, 1, 1)
 end

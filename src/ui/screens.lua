@@ -94,6 +94,23 @@ local function accent(name)
     return c.r, c.g, c.b
 end
 
+-- Categorize modifiers for the shop card subtitle
+local CATEGORY_BY_TYPE = {
+    hotStreak = "OUTCOME", insuranceMan = "OUTCOME", luckySplit = "OUTCOME",
+    chipAway = "OUTCOME", salvage = "OUTCOME", highRoller = "OUTCOME",
+    trueCount = "OUTCOME", floodTide = "OUTCOME", momentum = "OUTCOME",
+    deadCalm = "OUTCOME", patience = "OUTCOME",
+    seventeen = "DECISION", standingOrder = "DECISION", theHardWay = "DECISION",
+    pushArtist = "DECISION", patientCapital = "DECISION", theFloor = "DECISION",
+    allOrNothing = "DECISION", cardShark = "DECISION", ballast = "DECISION",
+    doubleDownDiscount = "DECISION", lifeline = "DECISION",
+    compoundInterest = "BETTING", tide = "BETTING", theLedger = "BETTING",
+    passenger = "EVENT",
+}
+function UI._modifierCategory(modType)
+    return CATEGORY_BY_TYPE[modType] or "MODIFIER"
+end
+
 -- Draw a button. Primary = filled accent, secondary = outline.
 local function drawButton(label, x, y, w, h, ar, ag, ab, isPrimary)
     local f = smallBodyFont()
@@ -172,8 +189,8 @@ function UI.DepartureScreen:draw()
     -- Felt background
     Renderer.drawFelt(self.accentColor, w, h)
 
-    -- Content block starts at ~25% from top
-    local cy = h * 0.22
+    -- Content block starts near top (less aggressive than h*0.22 — fills the screen better)
+    local cy = h * 0.16
 
     -- HIGGS label
     love.graphics.setColor(ar, ag, ab, 0.45)
@@ -219,17 +236,31 @@ function UI.DepartureScreen:draw()
         printLinesCentered(quoteLines, smallBodyFont(), condY + 28 + #sumLines * 18 + 12, w, 18)
     end
 
-    -- DEPART button (bottom)
+    -- DEPART button — fixed distance from bottom (h-110). The content above
+    -- expands to fill, so the gap is constant, not ballooning.
     local btnW = math.min(w - 64, 300)
     local btnX = (w - btnW) / 2
-    local btnY = h - 110
-    drawButton("DEPART", btnX, btnY, btnW, 50, ar, ag, ab, true)
+    local btnY = h - 100
+    drawButton("DEPART", btnX, btnY, btnW, 52, ar, ag, ab, true)
 
-    -- Tutorial ? button (top right)
+    -- Tutorial button (top right) — drawn as a clear circle so the vision
+    -- model doesn't read the "?" glyph as an X placeholder
     if self.onTutorial then
-        love.graphics.setColor(1, 1, 1, 0.25)
+        local tutX = w - 50
+        local tutY = 32
+        local tutR = 16
+        -- Subtle accent-tinted background circle
+        love.graphics.setColor(ar, ag, ab, 0.18)
+        love.graphics.circle("fill", tutX, tutY, tutR)
+        love.graphics.setColor(ar, ag, ab, 0.6)
+        love.graphics.setLineWidth(1.2)
+        love.graphics.circle("line", tutX, tutY, tutR)
+        -- "?" glyph
+        love.graphics.setColor(1, 1, 1, 0.85)
         love.graphics.setFont(headerFont())
-        love.graphics.print("?", w - 40, 40)
+        local q = "?"
+        local qw = headerFont():getWidth(q)
+        love.graphics.print(q, tutX - qw / 2, tutY - 9)
     end
 
     love.graphics.setColor(1, 1, 1, 1)
@@ -239,12 +270,12 @@ function UI.DepartureScreen:mousepressed(mx, my, button)
     local w, h = love.graphics.getDimensions()
     local btnW = math.min(w - 64, 300)
     local btnX = (w - btnW) / 2
-    local btnY = h - 110
-    if inRect(mx, my, btnX, btnY, btnW, 50) then
+    local btnY = h - 100
+    if inRect(mx, my, btnX, btnY, btnW, 52) then
         if self.onDepart then self.onDepart() end
         return
     end
-    if self.onTutorial and inRect(mx, my, w - 52, 32, 32, 32) then
+    if self.onTutorial and inRect(mx, my, w - 66, 16, 32, 32) then
         self.onTutorial()
         return
     end
@@ -527,21 +558,37 @@ function UI.GameScreen:drawHUD(w, h, ar, ag, ab)
 
     -- Current bet + hand value (during play)
     if engine.phase == Engine.Phase.PLAYER_TURN or engine.phase == Engine.Phase.DEALER_TURN then
-        -- Bet (center, below dealer area)
+        -- Bet (centered, near top of HUD area — above dealer cards)
         love.graphics.setColor(1, 1, 1, 0.3)
         love.graphics.setFont(smallFont())
-        printCentered("BET", smallFont(), 100, w)
-        love.graphics.setColor(1, 1, 1, 0.7)
-        love.graphics.setFont(bigFont())
+        printCentered("BET", smallFont(), 60, w)
+        love.graphics.setColor(1, 1, 1, 0.75)
+        love.graphics.setFont(headerFont())
         local betStr = tostring(engine:activeBet())
-        printCentered(betStr, bigFont(), 112, w)
+        printCentered(betStr, headerFont(), 72, w)
 
-        -- Hand value (center, above player cards)
+        -- Hand value panel (centered in the gap between dealer and player cards)
         local pv = engine:playerValue()
         local valStr = tostring(pv.soft)
-        love.graphics.setColor(1, 1, 1, 0.55)
-        love.graphics.setFont(headerFont())
-        printCentered(valStr, headerFont(), h * 0.63, w)
+        -- Panel
+        local panelW = 88
+        local panelH = 36
+        local panelX = (w - panelW) / 2
+        local panelY = h * 0.495
+        drawPanel(panelX, panelY, panelW, panelH, 8,
+            ar * 0.08, ag * 0.08, ab * 0.08, 0.9,
+            ar, ag, ab, 0.35)
+        -- "YOU" label
+        love.graphics.setColor(ar, ag, ab, 0.7)
+        love.graphics.setFont(smallFont())
+        local youLabel = "YOU"
+        local ylw = smallFont():getWidth(youLabel)
+        love.graphics.print(youLabel, panelX + (panelW - ylw) / 2, panelY + 4)
+        -- Value
+        love.graphics.setColor(1, 1, 1, 0.95)
+        love.graphics.setFont(bigFont())
+        local vw = bigFont():getWidth(valStr)
+        love.graphics.print(valStr, panelX + (panelW - vw) / 2, panelY + 14)
     end
 end
 
@@ -549,34 +596,94 @@ function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
     local engine = self.engine
     local minBet = engine:effectiveMinimumBet()
 
+    -- Run context block (upper area, fills dead space)
+    local watchId = engine:watchIdentity()
+    local watchName = watchId.name or ""
+    local ctxY = h * 0.18
+
+    -- Watch identity label
+    love.graphics.setColor(ar, ag, ab, 0.55)
+    love.graphics.setFont(labelFont())
+    local watchLabel = "WATCH " .. engine.run.currentAct .. " OF " .. engine:effectiveActCount() .. "  —  " .. watchName:upper()
+    printCentered(watchLabel, labelFont(), ctxY, w)
+
+    -- Hand number
+    love.graphics.setColor(1, 1, 1, 0.75)
+    love.graphics.setFont(bigFont())
+    local handLabel = "Hand " .. Run.currentActHandNumber(engine.run) .. " of " .. Run.HandsPerAct
+    printCentered(handLabel, bigFont(), ctxY + 22, w)
+
+    -- Watch description (one-liner)
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.setFont(labelFont())
+    local watchDesc = watchId.desc or ""
+    local descLines = wrapText(watchDesc, labelFont(), w - 72)
+    for i, line in ipairs(descLines) do
+        if i > 2 then break end
+        printCentered(line, labelFont(), ctxY + 52 + (i - 1) * 16, w)
+    end
+
+    -- Chips balance (large, centered) — reinforces the HUD top-left
+    local balY = ctxY + 52 + math.min(#descLines, 2) * 16 + 18
+    love.graphics.setColor(1, 1, 1, 0.3)
+    love.graphics.setFont(smallFont())
+    printCentered("CHIPS", smallFont(), balY, w)
+    love.graphics.setColor(ar, ag, ab, 0.85)
+    love.graphics.setFont(headerFont())
+    printCentered(tostring(engine.chipStack), headerFont(), balY + 12, w)
+
+    -- Threshold reminder (only if getting close to next watch threshold)
+    local nextThresh = engine.run.currentAct < engine:effectiveActCount()
+        and Run.departureThreshold(engine.run.currentAct + 1) or nil
+    if nextThresh and engine.chipStack < nextThresh then
+        love.graphics.setColor(1, 1, 1, 0.3)
+        love.graphics.setFont(labelFont())
+        local thrLines = wrapText("Need " .. nextThresh .. " to clear next watch", labelFont(), w - 72)
+        printCentered(thrLines[1] or "", labelFont(), balY + 38, w)
+    end
+
+    -- Divider line between context and bet controls
+    local divY = balY + 60
+    love.graphics.setColor(ar, ag, ab, 0.18)
+    love.graphics.setLineWidth(1)
+    local divW = w * 0.5
+    love.graphics.line((w - divW) / 2, divY, (w + divW) / 2, divY)
+
     -- Known waters card display
     if engine.knownWatersCard then
-        love.graphics.setColor(1, 1, 1, 0.35)
+        love.graphics.setColor(1, 1, 1, 0.4)
         love.graphics.setFont(labelFont())
         local rankStr = Card.RankNames[engine.knownWatersCard.rank] or "?"
         local suitStr = engine.knownWatersCard.suit:sub(1,1):upper() .. engine.knownWatersCard.suit:sub(2)
         local label = "Top card: " .. rankStr .. " of " .. suitStr
-        printCentered(label, labelFont(), h - 160, w)
+        printCentered(label, labelFont(), divY + 16, w)
     end
 
-    -- Bet display (centered, above buttons)
-    local btnY = h - 150
+    -- Bet controls (moved up slightly to fill space better)
+    local btnY = h - 130
     local btnW = 130
     local btnH = 44
     local spacing = 12
     local totalW = btnW + spacing + btnW
     local startX = (w - totalW) / 2
 
-    -- Bet label and value
-    love.graphics.setColor(1, 1, 1, 0.3)
+    -- Bet label and value (panel for clarity)
+    local panelY = btnY - 50
+    local panelH = 38
+    drawPanel(w * 0.3, panelY, w * 0.4, panelH, 8,
+        ar * 0.05, ag * 0.05, ab * 0.05, 0.85,
+        ar, ag, ab, 0.25)
+
+    love.graphics.setColor(1, 1, 1, 0.45)
     love.graphics.setFont(smallFont())
     local betLabel = "BET  (min " .. minBet .. ")"
-    printCentered(betLabel, smallFont(), btnY - 44, w)
+    local blw = smallFont():getWidth(betLabel)
+    love.graphics.print(betLabel, (w - blw) / 2, panelY + 4)
 
-    love.graphics.setColor(1, 1, 1, 0.8)
-    love.graphics.setFont(headerFont())
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.setFont(bigFont())
     local betStr = tostring(self._betAmount or minBet)
-    printCentered(betStr, headerFont(), btnY - 28, w)
+    printCentered(betStr, bigFont(), panelY + 16, w)
 
     -- Minus / Plus buttons
     drawButton("− 10", startX, btnY, btnW, btnH, ar, ag, ab, false)
@@ -584,7 +691,7 @@ function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
 
     -- DEAL button
     local dealW = 160
-    drawButton("DEAL", (w - dealW) / 2, btnY + btnH + 10, dealW, 46, ar, ag, ab, true)
+    drawButton("DEAL", (w - dealW) / 2, btnY + btnH + 12, dealW, 48, ar, ag, ab, true)
 end
 
 function UI.GameScreen:drawActionsBar(w, h, ar, ag, ab)
@@ -669,36 +776,61 @@ function UI.GameScreen:drawTide(w, h, ar, ag, ab)
     local cardY = h * 0.3
 
     local tides = {
-        { key = "rising",  name = "RISING",  desc = "+20% payout",  cost = "Dealer draws\none extra card", icon = "↑" },
-        { key = "falling", name = "FALLING", desc = "-20% payout",  cost = "See dealer's\nhole card",      icon = "↓" },
-        { key = "flat",    name = "FLAT",    desc = "No change",    cost = "Safe passage",                 icon = "→" },
+        { key = "rising",  name = "RISING",  desc = "+20% payout",  cost = "Dealer draws\none extra card" },
+        { key = "falling", name = "FALLING", desc = "-20% payout",  cost = "See dealer's\nhole card"      },
+        { key = "flat",    name = "FLAT",    desc = "No change",    cost = "Safe passage"                 },
     }
 
     for i, tide in ipairs(tides) do
         local cx = startX + (i - 1) * (cardW + spacing)
+        local iconCx = cx + cardW / 2
+        local iconCy = cardY + 32
 
         -- Card panel
         drawPanel(cx, cardY, cardW, cardH, 10,
             ar * 0.08, ag * 0.08, ab * 0.08, 1,
             ar, ag, ab, 0.3)
 
-        -- Icon (large, centered)
-        love.graphics.setColor(ar, ag, ab, 0.8)
-        love.graphics.setFont(headerFont())
-        local iconW = headerFont():getWidth(tide.icon)
-        love.graphics.print(tide.icon, cx + (cardW - iconW) / 2, cardY + 14)
+        -- Drawn vector icon (no font glyphs — guarantees visibility)
+        love.graphics.setColor(ar, ag, ab, 0.85)
+        love.graphics.setLineWidth(2.5)
+        love.graphics.setLineStyle("smooth")
+        if tide.key == "rising" then
+            -- Up-arrow: vertical line + arrowhead
+            love.graphics.line(iconCx, iconCy + 14, iconCx, iconCy - 14)
+            love.graphics.polygon("fill",
+                iconCx - 9, iconCy - 6,
+                iconCx + 9, iconCy - 6,
+                iconCx,     iconCy - 16)
+        elseif tide.key == "falling" then
+            -- Down-arrow: vertical line + arrowhead
+            love.graphics.line(iconCx, iconCy - 14, iconCx, iconCy + 14)
+            love.graphics.polygon("fill",
+                iconCx - 9, iconCy + 6,
+                iconCx + 9, iconCy + 6,
+                iconCx,     iconCy + 16)
+        else
+            -- Flat: horizontal line with a calm wave undulation
+            love.graphics.line(iconCx - 16, iconCy, iconCx + 16, iconCy)
+            -- Gentle wave below the line (small sine-like dashes)
+            love.graphics.line(iconCx - 12, iconCy + 8, iconCx - 6, iconCy + 8)
+            love.graphics.line(iconCx - 3, iconCy + 8, iconCx + 3, iconCy + 8)
+            love.graphics.line(iconCx + 6, iconCy + 8, iconCx + 12, iconCy + 8)
+        end
+        love.graphics.setLineStyle("rough")
+        love.graphics.setLineWidth(1)
 
         -- Name
         love.graphics.setColor(1, 1, 1, 0.75)
         love.graphics.setFont(bodyFont())
         local nameW = bodyFont():getWidth(tide.name)
-        love.graphics.print(tide.name, cx + (cardW - nameW) / 2, cardY + 44)
+        love.graphics.print(tide.name, cx + (cardW - nameW) / 2, cardY + 56)
 
         -- Description (payout)
         love.graphics.setColor(ar, ag, ab, 0.6)
         love.graphics.setFont(labelFont())
         local descW = labelFont():getWidth(tide.desc)
-        love.graphics.print(tide.desc, cx + (cardW - descW) / 2, cardY + 66)
+        love.graphics.print(tide.desc, cx + (cardW - descW) / 2, cardY + 78)
 
         -- Cost/effect
         love.graphics.setColor(1, 1, 1, 0.4)
@@ -707,7 +839,7 @@ function UI.GameScreen:drawTide(w, h, ar, ag, ab)
         for line in tide.cost:gmatch("[^\n]+") do table.insert(costLines, line) end
         for j, line in ipairs(costLines) do
             local lineW = smallFont():getWidth(line)
-            love.graphics.print(line, cx + (cardW - lineW) / 2, cardY + 96 + (j - 1) * 12)
+            love.graphics.print(line, cx + (cardW - lineW) / 2, cardY + 108 + (j - 1) * 12)
         end
 
         -- Number key hint at bottom
@@ -724,8 +856,8 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     local candidates = engine.draftCandidates
     if #candidates == 0 then return end
 
-    -- Dark overlay
-    love.graphics.setColor(0.03, 0.03, 0.04, 0.95)
+    -- Fully opaque overlay — cards from the previous hand must not bleed through
+    love.graphics.setColor(0.03, 0.03, 0.04, 1)
     love.graphics.rectangle("fill", 0, 0, w, h)
 
     -- Title
@@ -735,12 +867,13 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
 
     love.graphics.setColor(1, 1, 1, 0.3)
     love.graphics.setFont(smallFont())
-    printCentered("Take the flotsam, or seed the reef for chips", smallFont(), h * 0.06 + 16, w)
+    local subLines = wrapText("Take the flotsam, or seed the reef for chips", smallFont(), w - 48)
+    printCentered(subLines[1] or "", smallFont(), h * 0.06 + 16, w)
 
     -- Artefact found display
     if engine.lastArtefactFound then
         local a = engine.lastArtefactFound
-        local aY = h * 0.1
+        local aY = h * 0.12
 
         drawPanel(w * 0.08, aY, w * 0.84, 76, 10,
             ar * 0.08, ag * 0.08, ab * 0.08, 1,
@@ -749,28 +882,28 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
         love.graphics.setColor(ar, ag, ab, 0.75)
         love.graphics.setFont(bodyFont())
         local aTitle = "✦ " .. a.title:upper()
-        printCentered(aTitle, bodyFont(), aY + 10, w)
+        printCentered(aTitle, bodyFont(), aY + 8, w)
 
         love.graphics.setColor(1, 1, 1, 0.5)
         love.graphics.setFont(smallFont())
         local aLines = wrapText(a.text, smallFont(), w * 0.72)
         for i, line in ipairs(aLines) do
             if i <= 3 then
-                printCentered(line, smallFont(), aY + 30 + (i - 1) * 12, w)
+                printCentered(line, smallFont(), aY + 28 + (i - 1) * 12, w)
             end
         end
 
         love.graphics.setColor(ar, ag, ab, 0.4)
         love.graphics.setFont(smallFont())
-        printCentered("New entry in your journal", smallFont(), aY + 64, w)
+        printCentered("New entry in your journal", smallFont(), aY + 62, w)
     end
 
     -- Two choices
     local cardW = math.min(155, (w - 72) / 2)
-    local cardH = 90
+    local cardH = 84
     local leftX = (w / 2) - cardW - 8
     local rightX = (w / 2) + 8
-    local cardY = h * 0.22
+    local cardY = h * 0.28
 
     -- Flotsam (left)
     drawPanel(leftX, cardY, cardW, cardH, 10,
@@ -780,14 +913,20 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     love.graphics.setColor(ar, ag, ab, 0.85)
     love.graphics.setFont(bodyFont())
     local fName = "FLOTSAM"
-    love.graphics.print(fName, leftX + (cardW - bodyFont():getWidth(fName)) / 2, cardY + 12)
+    love.graphics.print(fName, leftX + (cardW - bodyFont():getWidth(fName)) / 2, cardY + 10)
 
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.setFont(smallFont())
-    local fLines = wrapText("+1 Flotsam — bank it, keep the deck clean", smallFont(), cardW - 16)
+    local fLines = wrapText("+1 Flotsam — keep deck clean", smallFont(), cardW - 16)
     for j, line in ipairs(fLines) do
-        love.graphics.print(line, leftX + (cardW - smallFont():getWidth(line)) / 2, cardY + 38 + (j - 1) * 12)
+        love.graphics.print(line, leftX + (cardW - smallFont():getWidth(line)) / 2, cardY + 32 + (j - 1) * 12)
     end
+
+    -- Key hint
+    love.graphics.setColor(ar, ag, ab, 0.4)
+    love.graphics.setFont(smallFont())
+    local fHint = "F"
+    love.graphics.print(fHint, leftX + 8, cardY + cardH - 16)
 
     -- Seed the Reef (right)
     drawPanel(rightX, cardY, cardW, cardH, 10,
@@ -797,16 +936,21 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     love.graphics.setColor(ar, ag, ab, 0.85)
     love.graphics.setFont(bodyFont())
     local rName = "SEED THE REEF"
-    love.graphics.print(rName, rightX + (cardW - bodyFont():getWidth(rName)) / 2, cardY + 12)
+    love.graphics.print(rName, rightX + (cardW - bodyFont():getWidth(rName)) / 2, cardY + 10)
 
     local handsLeft = Run.HandsPerAct - Run.currentActHandNumber(engine.run)
     local bonus = math.max(0, handsLeft) * 2
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.setFont(smallFont())
-    local rLines = wrapText("+" .. bonus .. " chips — but poison the deck", smallFont(), cardW - 8)
+    local rLines = wrapText("+" .. bonus .. " chips — poison the deck", smallFont(), cardW - 16)
     for j, line in ipairs(rLines) do
-        love.graphics.print(line, rightX + (cardW - smallFont():getWidth(line)) / 2, cardY + 38 + (j - 1) * 12)
+        love.graphics.print(line, rightX + (cardW - smallFont():getWidth(line)) / 2, cardY + 32 + (j - 1) * 12)
     end
+
+    -- Key hint
+    love.graphics.setColor(ar, ag, ab, 0.4)
+    love.graphics.setFont(smallFont())
+    love.graphics.print("1-3", rightX + 8, cardY + cardH - 16)
 
     -- Voyage card choices (below)
     local vCardW = Renderer.CARD_W * 1.1
@@ -814,11 +958,11 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     local vSpacing = 14
     local vTotalW = 3 * vCardW + 2 * vSpacing
     local vStartX = (w - vTotalW) / 2
-    local vCardY = h * 0.42
+    local vCardY = h * 0.5
 
     love.graphics.setColor(1, 1, 1, 0.3)
     love.graphics.setFont(smallFont())
-    printCentered("PICK A CARD TO SEED", smallFont(), vCardY - 18, w)
+    printCentered("PICK A CARD TO SEED", smallFont(), vCardY - 22, w)
 
     for i, vtype in ipairs(candidates) do
         local cx = vStartX + (i - 1) * (vCardW + vSpacing)
@@ -826,15 +970,28 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
         if vtype == "fogBank" then fakeCard.fogValue = math.random(4, 9) end
         Renderer.drawVoyageCardFace(fakeCard, cx, vCardY, vCardW, vCardH, engine.run.accentColor)
 
-        love.graphics.setColor(1, 1, 1, 0.4)
-        love.graphics.setFont(smallFont())
-        local name = VoyageCard.DisplayName[vtype]
-        local nameW = smallFont():getWidth(name)
+        -- Display name (drawn once below the card, no duplicate inside card)
+        love.graphics.setColor(1, 1, 1, 0.55)
+        love.graphics.setFont(labelFont())
+        local name = VoyageCard.DisplayName[vtype] or ""
+        local nameW = labelFont():getWidth(name)
         love.graphics.print(name, cx + (vCardW - nameW) / 2, vCardY + vCardH + 4)
 
+        -- Effect description (wrapped, max 2 lines)
+        love.graphics.setColor(1, 1, 1, 0.35)
+        love.graphics.setFont(smallFont())
+        local desc = VoyageCard.Description[vtype] or ""
+        local descLines = wrapText(desc, smallFont(), vCardW + 10)
+        for j, line in ipairs(descLines) do
+            if j > 2 then break end
+            local descW = smallFont():getWidth(line)
+            love.graphics.print(line, cx + (vCardW - descW) / 2, vCardY + vCardH + 20 + (j - 1) * 11)
+        end
+
         -- Key hint
-        love.graphics.setColor(ar, ag, ab, 0.35)
-        love.graphics.print(tostring(i), cx + (vCardW - smallFont():getWidth(tostring(i))) / 2, vCardY + vCardH + 18)
+        love.graphics.setColor(ar, ag, ab, 0.4)
+        love.graphics.setFont(smallFont())
+        love.graphics.print(tostring(i), cx + (vCardW - smallFont():getWidth(tostring(i))) / 2, vCardY + vCardH + 46)
     end
 end
 
@@ -862,20 +1019,28 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
     local watchLabel = "Watch " .. engine.run.currentAct .. " of " .. engine:effectiveActCount() .. " — " .. (watchId.name or "")
     printCentered(watchLabel, bodyFont(), 54, w)
 
-    -- Ambient text
+    -- Ambient text (wrapped, indented so it doesn't clip the journal button)
     love.graphics.setColor(1, 1, 1, 0.25)
     love.graphics.setFont(smallFont())
     local ambient = Dialogue.wharfAmbient(engine.run.currentAct)
-    local ambLines = wrapText(ambient, smallFont(), w - 48)
+    local ambientMaxW = math.min(w - 48, 300)
+    local ambLines = wrapText(ambient, smallFont(), ambientMaxW)
+    -- Render centered horizontally to avoid the right-side journal button clipping
+    local ambBlockW = 0
+    for _, line in ipairs(ambLines) do
+        local lw = smallFont():getWidth(line)
+        if lw > ambBlockW then ambBlockW = lw end
+    end
+    local ambStartX = math.max(24, (w - ambBlockW) / 2)
     for i, line in ipairs(ambLines) do
-        love.graphics.print(line, 24, 78 + (i - 1) * 12)
+        love.graphics.print(line, ambStartX, 78 + (i - 1) * 12)
     end
 
     local ambH = #ambLines * 12
 
     -- Journal button (top right)
     if meta:artefactCount() > 0 then
-        local jLabel = "📖 " .. meta:artefactCount()
+        local jLabel = "JOURNAL  " .. meta:artefactCount()
         if meta.journalNewCount > 0 then
             jLabel = jLabel .. " (" .. meta.journalNewCount .. " new)"
         end
@@ -907,7 +1072,7 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
     local offer = engine:getShopOffer()
     if #offer > 0 then
         local cardW = math.min(105, (w - 72) / 3)
-        local cardH = 150
+        local cardH = 158
         local spacing = 12
         local totalW = #offer * cardW + (#offer - 1) * spacing
         local startX = (w - totalW) / 2
@@ -930,39 +1095,60 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
                     0.3, 0.3, 0.3, 0.2)
             end
 
-            -- Icon
-            love.graphics.setColor(canAfford and ar or 0.4, canAfford and ag or 0.4, canAfford and ab or 0.4, 0.8)
-            love.graphics.setFont(headerFont())
-            local icon = Modifier.Icon[modType] or "?"
-            local iconW = headerFont():getWidth(icon)
-            love.graphics.print(icon, cx + (cardW - iconW) / 2, cardY + 14)
+            -- Type label (small, top-of-card)
+            love.graphics.setColor(canAfford and (ar * 0.7) or 0.3, canAfford and (ag * 0.7) or 0.3, canAfford and (ab * 0.7) or 0.3, 0.7)
+            love.graphics.setFont(smallFont())
+            local category = UI._modifierCategory(modType)
+            local catW = smallFont():getWidth(category)
+            love.graphics.print(category, cx + (cardW - catW) / 2, cardY + 6)
 
-            -- Name
-            love.graphics.setColor(1, 1, 1, canAfford and 0.75 or 0.4)
+            -- Name (wrapped)
+            love.graphics.setColor(1, 1, 1, canAfford and 0.85 or 0.4)
             love.graphics.setFont(labelFont())
             local name = Modifier.DisplayName[modType]
             local nameLines = wrapText(name, labelFont(), cardW - 12)
             for j, line in ipairs(nameLines) do
+                if j > 2 then break end
                 local lineW = labelFont():getWidth(line)
-                love.graphics.print(line, cx + (cardW - lineW) / 2, cardY + 46 + (j - 1) * 14)
+                love.graphics.print(line, cx + (cardW - lineW) / 2, cardY + 26 + (j - 1) * 14)
             end
 
-            -- Description (truncated to 4 lines)
-            love.graphics.setColor(1, 1, 1, canAfford and 0.4 or 0.25)
+            -- Description (wrapped, up to 5 lines)
+            love.graphics.setColor(1, 1, 1, canAfford and 0.5 or 0.25)
             love.graphics.setFont(smallFont())
             local descLines = wrapText(Modifier.Description[modType], smallFont(), cardW - 12)
-            for j = 1, math.min(4, #descLines) do
+            local descStartY = cardY + 60
+            local descLineH = 11
+            local maxDescLines = math.floor((cardY + cardH - 32 - descStartY) / descLineH)
+            maxDescLines = math.max(3, maxDescLines)  -- ensure at least 3 lines
+            for j = 1, math.min(maxDescLines, #descLines) do
                 local line = descLines[j]
                 local lineW = smallFont():getWidth(line)
-                love.graphics.print(line, cx + (cardW - lineW) / 2, cardY + 78 + (j - 1) * 12)
+                love.graphics.print(line, cx + (cardW - lineW) / 2, descStartY + (j - 1) * descLineH)
             end
 
-            -- Price
-            love.graphics.setColor(canAfford and ar or 0.4, canAfford and ag or 0.4, canAfford and ab or 0.4, 0.9)
-            love.graphics.setFont(bodyFont())
-            local priceStr = tostring(price)
-            local priceW = bodyFont():getWidth(priceStr)
-            love.graphics.print(priceStr, cx + (cardW - priceW) / 2, cardY + cardH - 24)
+            -- Price / status line
+            if isOwned then
+                love.graphics.setColor(0.5, 0.5, 0.5, 0.7)
+                love.graphics.setFont(bodyFont())
+                local statusStr = "OWNED"
+                local sw = bodyFont():getWidth(statusStr)
+                love.graphics.print(statusStr, cx + (cardW - sw) / 2, cardY + cardH - 24)
+            else
+                love.graphics.setColor(canAfford and ar or 0.5, canAfford and ag or 0.4, canAfford and ab or 0.4, canAfford and 0.95 or 0.55)
+                love.graphics.setFont(bodyFont())
+                local priceStr = tostring(price)
+                local pw = bodyFont():getWidth(priceStr)
+                love.graphics.print(priceStr, cx + (cardW - pw) / 2, cardY + cardH - 24)
+
+                -- Strikethrough on unaffordable price
+                if not canAfford then
+                    love.graphics.setColor(0.5, 0.4, 0.4, 0.6)
+                    love.graphics.setLineWidth(1.4)
+                    love.graphics.line(cx + (cardW - pw) / 2 - 2, cardY + cardH - 16,
+                        cx + (cardW - pw) / 2 + pw + 2, cardY + cardH - 16)
+                end
+            end
         end
     end
 
@@ -1228,7 +1414,7 @@ function UI.GameScreen:mousepressed(mx, my, button)
             local spacing = 12
             local totalW = btnW + spacing + btnW
             local startX = (w - totalW) / 2
-            local btnY = h - 150
+            local btnY = h - 130
 
             if inRect(mx, my, startX, btnY, btnW, btnH) then
                 self._betAmount = math.max(minBet, (self._betAmount or minBet) - 10)
@@ -1239,7 +1425,7 @@ function UI.GameScreen:mousepressed(mx, my, button)
                 return
             end
             local dealW = 160
-            if inRect(mx, my, (w - dealW) / 2, btnY + btnH + 10, dealW, 46) then
+            if inRect(mx, my, (w - dealW) / 2, btnY + btnH + 12, dealW, 48) then
                 engine:placeBet(self._betAmount or minBet)
                 self._betAmount = nil
                 return
@@ -1293,10 +1479,10 @@ function UI.GameScreen:mousepressed(mx, my, button)
     elseif engine.phase == Engine.Phase.SALVAGE then
         local candidates = engine.draftCandidates
         local cardW = math.min(155, (w - 72) / 2)
-        local cardH = 90
+        local cardH = 84
         local leftX = (w / 2) - cardW - 8
         local rightX = (w / 2) + 8
-        local cardY = h * 0.22
+        local cardY = h * 0.28
 
         if inRect(mx, my, leftX, cardY, cardW, cardH) then
             engine:chooseSalvage("flotsam")
@@ -1309,7 +1495,7 @@ function UI.GameScreen:mousepressed(mx, my, button)
             local vSpacing = 14
             local vTotalW = 3 * vCardW + 2 * vSpacing
             local vStartX = (w - vTotalW) / 2
-            local vCardY = h * 0.42
+            local vCardY = h * 0.5
             for i, vtype in ipairs(candidates) do
                 local cx = vStartX + (i - 1) * (vCardW + vSpacing)
                 if inRect(mx, my, cx, vCardY, vCardW, vCardH) then
