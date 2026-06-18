@@ -639,6 +639,17 @@ function Engine:chooseSalvage(choice, voyageType)
     if choice == Engine.Salvage.FLOTSAM then
         -- +1 Flotsam, no deck modification
         self.run._salvageFlotsam = (self.run._salvageFlotsam or 0) + 1
+
+        -- NEW: Roll for artefact
+        local Artefacts = require("src.models.artefacts")
+        local state = self.meta:artefactRollState()
+        local artefact = Artefacts.roll(state)
+        if artefact then
+            self.meta:addArtefact(artefact.id)
+            self.lastArtefactFound = artefact  -- UI can display this
+        else
+            self.lastArtefactFound = nil
+        end
     elseif choice == Engine.Salvage.REEF and voyageType then
         -- Seed voyage card, gain +2 chips per remaining hand this watch
         local card = Card.newVoyage(voyageType)
@@ -648,6 +659,7 @@ function Engine:chooseSalvage(choice, voyageType)
         local bonus = math.max(0, handsLeft) * 2
         self.chipStack = self.chipStack + bonus
         self.run.chipStack = self.chipStack
+        self.lastArtefactFound = nil
     end
 
     self.draftCandidates = {}
@@ -922,6 +934,7 @@ function Engine:endRun(outcome)
     self.run.endDate = os.time()
     self.run.chipStack = self.chipStack
     self.meta:addFlotsam(self.run)
+    self.meta:trackRunProgress(self.run)  -- NEW: track for narrative triggers
     self.meta:save()
     self.phase = Engine.Phase.GAME_OVER
     self._pendingOutcome = outcome

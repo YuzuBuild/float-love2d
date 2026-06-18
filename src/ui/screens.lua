@@ -9,6 +9,7 @@ local Engine = require("src.engine.engine")
 local Dialogue = require("src.dialogue")
 local Renderer = require("src.card_renderer")
 local Audio = require("src.audio.audio")
+local Artefacts = require("src.models.artefacts")
 
 local UI = {}
 
@@ -204,6 +205,8 @@ function UI.GameScreen.new(engine, meta, onNewRun)
     self.resultTimer = 0
     self.fustFlash = 0
     self.scrollY = 0
+    self.showJournal = false   -- NEW: journal overlay toggle
+    self.journalScrollY = 0
     return self
 end
 
@@ -267,6 +270,11 @@ function UI.GameScreen:draw()
         self:drawShop(w, h, ar, ag, ab)
     elseif engine.phase == Engine.Phase.GAME_OVER then
         self:drawGameOver(w, h, ar, ag, ab)
+    end
+
+    -- NEW: Journal overlay
+    if self.showJournal then
+        self:drawJournal(w, h, ar, ag, ab)
     end
 
     -- Fust flash
@@ -558,6 +566,29 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     local sub = "Take the flotsam, or seed the reef for chips"
     love.graphics.print(sub, centerX(sub, love.graphics.getFont(), w), h * 0.08 + 18)
 
+    -- NEW: If an artefact was found, display it prominently
+    if engine.lastArtefactFound then
+        local a = engine.lastArtefactFound
+        love.graphics.setColor(ar, ag, ab, 0.15)
+        love.graphics.rectangle("fill", w * 0.1, h * 0.13, w * 0.8, 80, 10, 10, 10, 10)
+        love.graphics.setColor(ar, ag, ab, 0.6)
+        love.graphics.setFont(love.graphics.newFont(13))
+        local aTitle = "✦ " .. a.title:upper()
+        love.graphics.print(aTitle, centerX(aTitle, love.graphics.getFont(), w), h * 0.14)
+        love.graphics.setColor(1, 1, 1, 0.5)
+        love.graphics.setFont(love.graphics.newFont(10))
+        local aLines = wrapText(a.text, love.graphics.getFont(), w * 0.7)
+        for i, line in ipairs(aLines) do
+            if i <= 3 then  -- max 3 lines in the small display
+                love.graphics.print(line, centerX(line, love.graphics.getFont(), w), h * 0.14 + 22 + (i - 1) * 14)
+            end
+        end
+        love.graphics.setColor(ar, ag, ab, 0.4)
+        love.graphics.setFont(love.graphics.newFont(9))
+        local note = "New entry in your journal"
+        love.graphics.print(note, centerX(note, love.graphics.getFont(), w), h * 0.14 + 66)
+    end
+
     -- Left option: Take Flotsam
     local cardW = math.min(140, (w - 60) / 2)
     local cardH = 100
@@ -645,6 +676,27 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
     love.graphics.setFont(love.graphics.newFont(13))
     local watchLabel = "Watch " .. engine.run.currentAct .. " of " .. engine:effectiveActCount()
     love.graphics.print(watchLabel, centerX(watchLabel, love.graphics.getFont(), w), 74)
+
+    -- NEW: Wharf ambient text (watch-based transformation)
+    love.graphics.setColor(1, 1, 1, 0.25)
+    love.graphics.setFont(love.graphics.newFont(10))
+    local ambient = Dialogue.wharfAmbient(engine.run.currentAct)
+    local ambLines = wrapText(ambient, love.graphics.getFont(), w - 48)
+    for i, line in ipairs(ambLines) do
+        love.graphics.print(line, 24, 94 + (i - 1) * 12)
+    end
+
+    -- NEW: Journal button (top right) if any artefacts collected
+    if meta:artefactCount() > 0 then
+        local jLabel = "📖 " .. meta:artefactCount()
+        if meta.journalNewCount > 0 then
+            jLabel = jLabel .. " (" .. meta.journalNewCount .. " new)"
+        end
+        love.graphics.setColor(ar, ag, ab, 0.6)
+        love.graphics.setFont(love.graphics.newFont(11))
+        local jw = love.graphics.getFont():getWidth(jLabel)
+        love.graphics.print(jLabel, w - jw - 20, 56)
+    end
 
     -- Chip count
     love.graphics.setColor(ar, ag, ab, 0.8)
@@ -781,6 +833,88 @@ function UI.GameScreen:drawGameOver(w, h, ar, ag, ab)
     drawButton("NEW VOYAGE", (w - 200) / 2, h - 80, 200, 48, ar, ag, ab, true)
 end
 
+-------------------------------------------------------------------------------
+-- NEW: Journal screen
+-------------------------------------------------------------------------------
+
+function UI.GameScreen:drawJournal(w, h, ar, ag, ab)
+    local meta = self.meta
+
+    -- Full overlay
+    love.graphics.setColor(0.04, 0.04, 0.04, 0.97)
+    love.graphics.rectangle("fill", 0, 0, w, h)
+
+    -- Title
+    love.graphics.setColor(ar, ag, ab, 0.6)
+    love.graphics.setFont(love.graphics.newFont(14))
+    local title = "FLOTSAM JOURNAL"
+    love.graphics.print(title, 24, 24)
+
+    love.graphics.setColor(1, 1, 1, 0.3)
+    love.graphics.setFont(love.graphics.newFont(10))
+    local count = meta:artefactCount()
+    local total = Artefacts.getCount()
+    local countStr = count .. " of " .. total .. " found"
+    love.graphics.print(countStr, 24, 44)
+
+    -- Close button (top right)
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.setFont(love.graphics.newFont(13))
+    love.graphics.print("×", w - 36, 24)
+
+    -- Artefact entries (scrollable)
+    local y = 72 - self.journalScrollY
+    love.graphics.setColor(1, 1, 1, 0.7)
+    love.graphics.setFont(love.graphics.newFont(12))
+
+    for _, id in ipairs(meta.collectedArtefacts) do
+        local a = Artefacts.ById[id]
+        if not a then goto continue end
+
+        -- Skip if off-screen
+        if y > h - 20 then goto continue end
+        if y < 60 then goto next_entry end
+
+        -- Title
+        love.graphics.setColor(ar, ag, ab, 0.7)
+        love.graphics.setFont(love.graphics.newFont(12))
+        love.graphics.print("✦ " .. a.title, 24, y)
+
+        -- Text
+        love.graphics.setColor(1, 1, 1, 0.5)
+        love.graphics.setFont(love.graphics.newFont(10))
+        local lines = wrapText(a.text, love.graphics.getFont(), w - 48)
+        for i, line in ipairs(lines) do
+            love.graphics.print(line, 24, y + 18 + (i - 1) * 14)
+        end
+
+        y = y + 18 + #lines * 14 + 16
+
+        ::next_entry::
+        ::continue::
+    end
+
+    -- Empty state
+    if count == 0 then
+        love.graphics.setColor(1, 1, 1, 0.25)
+        love.graphics.setFont(love.graphics.newFont(13))
+        local empty = "No artefacts found yet."
+        love.graphics.print(empty, centerX(empty, love.graphics.getFont(), w), h * 0.4)
+        love.graphics.setFont(love.graphics.newFont(10))
+        local empty2 = "Take flotsam during salvage to find artefacts."
+        love.graphics.print(empty2, centerX(empty2, love.graphics.getFont(), w), h * 0.4 + 20)
+    end
+
+    -- Scroll hint
+    if y > h then
+        love.graphics.setColor(1, 1, 1, 0.2)
+        love.graphics.setFont(love.graphics.newFont(9))
+        love.graphics.print("scroll: ↑↓ keys", w - 100, h - 20)
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function UI.GameScreen:drawLuckyStart(w, h, ar, ag, ab)
     local engine = self.engine
     local offer = engine.luckyStartOffer
@@ -835,6 +969,33 @@ function UI.GameScreen:mousepressed(mx, my, button)
     local w, h = love.graphics.getDimensions()
     local engine = self.engine
     local ar, ag, ab = accent(engine.run.accentColor)
+
+    -- NEW: Journal overlay takes priority
+    if self.showJournal then
+        -- Close button (×)
+        if inRect(mx, my, w - 48, 20, 32, 32) then
+            self.showJournal = false
+            self.meta:clearJournalNewCount()
+            return
+        end
+        -- Click anywhere else in journal = stay (scroll handled by keys)
+        return
+    end
+
+    -- NEW: Journal button in shop
+    if engine.phase == Engine.Phase.SHOP and self.meta:artefactCount() > 0 then
+        local jLabel = "📖 " .. self.meta:artefactCount()
+        if self.meta.journalNewCount > 0 then
+            jLabel = jLabel .. " (" .. self.meta.journalNewCount .. " new)"
+        end
+        local font = love.graphics.newFont(11)
+        local jw = font:getWidth(jLabel)
+        if inRect(mx, my, w - jw - 28, 48, jw + 16, 24) then
+            self.showJournal = true
+            self.journalScrollY = 0
+            return
+        end
+    end
 
     if engine.phase == Engine.Phase.BETTING then
         if #engine.luckyStartOffer > 0 then
@@ -1003,6 +1164,30 @@ end
 
 function UI.GameScreen:keypressed(key)
     local engine = self.engine
+
+    -- NEW: Journal navigation
+    if self.showJournal then
+        if key == "escape" then
+            self.showJournal = false
+            self.meta:clearJournalNewCount()
+        elseif key == "up" then
+            self.journalScrollY = math.max(0, self.journalScrollY - 40)
+        elseif key == "down" then
+            self.journalScrollY = self.journalScrollY + 40
+        elseif key == "j" then
+            self.showJournal = false
+            self.meta:clearJournalNewCount()
+        end
+        return
+    end
+
+    -- NEW: Toggle journal with J in shop
+    if key == "j" and engine.phase == Engine.Phase.SHOP and self.meta:artefactCount() > 0 then
+        self.showJournal = true
+        self.journalScrollY = 0
+        return
+    end
+
     if key == "escape" then
         return
     end

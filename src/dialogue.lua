@@ -608,6 +608,125 @@ Dialogue.Arcs = {
 }
 
 -------------------------------------------------------------------------------
+-- NEW: Trigger-based dialogue
+-- Lines that fire based on what the player has found/done, not just run count.
+-- This is the DREDGE pattern: narrative responds to player actions.
+-------------------------------------------------------------------------------
+
+Dialogue.TriggerLines = {
+    higgs = {
+        -- Artefact-triggered
+        { trigger = { artefact = "charter_page" }, line = "That appendix again. I've seen the reference. I've never seen the appendix. Nobody has." },
+        { trigger = { artefact = "mayors_income_file" }, line = "You found the file. I wondered when someone would. The notation isn't mine. It was, once. Before the reorganisation. I stopped asking what it means." },
+        { trigger = { artefact = "notation_key" }, line = "So you know what it means now. Returned without memory. It doesn't mean the ship sank. It means the ship came back. The crew came back. The memories didn't. I file the forms. That's what I do." },
+        { trigger = { artefact = "higgs_coat" }, line = "You found the coat. Yes. It's the same coat. It's always the same coat. I don't explain it. I don't discuss it. You found it. That's enough." },
+        { trigger = { artefact = "higgs_truth" }, line = "You read it all. I wondered if anyone would. I keep the records. I've always kept the records. I don't know what happens to them. I know what happens to the people. They come back. I file it. I don't keep a count. I just keep the records." },
+        { trigger = { artefact = "endorsement_stamped" }, line = "You found a stamped endorsement. The stamp is mine. I don't remember stamping it. The date is blank. The date is always blank. I file them. Someone processes them. I've never met them." },
+        -- Progress-triggered
+        { trigger = { maxWatch = 4, firstTime = true }, line = "You made it past the third watch. Not many do. The sea gets different past the third marker. I've filed the usual report." },
+        { trigger = { hasWon = true, firstTime = true }, line = "You made port. I filed it. The endorsement is still processing. It's always processing. I don't ask anymore. I just stamp." },
+        { trigger = { artefactCount = 5 }, line = "You've been collecting. I can tell. The flotsam tells a story if you let it. I'm not sure it's a story you want to hear." },
+        { trigger = { artefactCount = 15 }, line = "You have enough pieces now. I can see it in how you look at the wharf. You're starting to see it too. I won't say what it is. I don't say what it is." },
+        { trigger = { artefactCount = 25 }, line = "Almost all of it. You've almost put it together. I've been here longer than the planks. You've been here less time than that. You already see more than I do. I don't know if that's good." },
+    },
+    maren = {
+        { trigger = { artefact = "second_ledger_page" }, line = "You found a page from my ledger. Yes, mine. The shortfall is not random. It's structural. The ships that don't come back are not lost. They're returned. I haven't decided what to do with the numbers yet." },
+        { trigger = { artefact = "calloway_manifest" }, line = "The Calloway Cross manifest. You found it. I wasn't on it. 'Equipment problem. Minor.' I wrote that note. I wasn't on the manifest because I wasn't on the ship. I was supposed to be. The equipment problem was me. I was the problem they fixed." },
+        { trigger = { artefact = "maren_calculations" }, line = "You found my calculations. The math doesn't cover it. I've tried. The shortfall is not variance. It's not luck. It's structural. Something takes them. Something returns them without their memories. The flotsam is the memory. I don't know where it goes. I'm still running the numbers." },
+        { trigger = { maxWatch = 4, firstTime = true }, line = "Watch four. The Calloway Cross's log ends at watch four. No entries after. Ships don't usually stop filing mid-crossing. You're past where the records stop. You're in new territory. Literally." },
+    },
+    cully = {
+        { trigger = { artefact = "cully_notebook" }, line = "You found my notebook. Yes, it's mine. Forty-one runs. Every system I tried. Every almost. I wasn't going to show anyone. But it floated back. Everything floats back. That's the point, isn't it? The almost floats back whether you want it to or not." },
+        { trigger = { runs = 10, neverWon = true }, line = "More than ten runs. Neither of us has made port. I'm starting to think the port isn't the point. The almost is. The almost is enough to live on if you're careful. I said that before. I meant it more this time." },
+        { trigger = { hasWon = true, firstTime = true }, line = "You made it. You actually made it. I've been watching people try that for years. You did it. I'm going to remember this one. I remember all the wins. There aren't many." },
+    },
+    sable = {
+        { trigger = { artefact = "spare_rigging" }, line = "You found that rigging. I know it. It's from the Maud. The knotwork is mine. I tied that knot forty years ago. The rope is still warm. Everything from the Reaches is warm. Everything from there remembers being warm. Even after it comes back." },
+        { trigger = { artefact = "maud_crew_list" }, line = "The Maud's crew list. You found it. Crossing seven. 'Rigging problem, ashore.' The handwriting is Higgs's. I wasn't ashore because of a rigging problem. I was ashore because Higgs kept me ashore. I don't know why. He doesn't say why. He filed it. He files everything." },
+        { trigger = { artefact = "sable_rope_knot" }, line = "You kept the knot. Good. The rope remembers. Everything remembers. That's the problem. The sea remembers every wreck. The Reaches remember every arrival. We remember the crossing but not what comes after. The after remembers us. It sends the flotsam back so we don't forget entirely." },
+        { trigger = { maxWatch = 4, firstTime = true }, line = "Past the third watch. The Maud's last log entry was coordinates. I looked them up. There's nothing there. Nothing I can find. You're past where the Maud went down. You're past where the coordinates point. You're in the place that isn't on any chart. Be careful. Not because it's dangerous. Because it remembers you." },
+    },
+}
+
+-- Wharf ambient transformation text by watch
+-- The wharf is the same place but it gets wrong as you progress
+Dialogue.WharfAmbient = {
+    [1] = {
+        "The wharf is quiet. The planks are wet. The sky is the same colour as the water. Everything is where it should be.",
+        "Salt in the air. Old rope. Old wood. The Mayor's Income sits in berth three. Nobody asks about it.",
+    },
+    [2] = {
+        "The wharf is the same. The planks are wet. The sky is the same colour as the water. The light in the harbormaster's office is on. It's always on.",
+        "Someone left a coat on the hook last week. It's still there. The same coat. Higgs's coat.",
+        "The water is a slightly wrong colour today. You wouldn't notice unless you'd been here before. You've been here before.",
+    },
+    [3] = {
+        "The light in the office is on at odd hours. The coat is still on the hook. The tide mark on the wall is higher than it was. The water is the wrong colour. You're sure now.",
+        "There's a ship in berth three. The Mayor's Income. She's been there three years. There's something painted on her hull you can almost read. The paint is the same colour as the water.",
+        "The forms on the counter are filled out. Not by you. The handwriting is familiar. You can't place it. Higgs is in the office. The door is closed. The light is on.",
+    },
+    [4] = {
+        "The wharf is different and you can't say how. The sky is the same colour as the water. The planks are wet. The coat is on the hook. The forms are on the counter. Higgs says the same things. The pauses are longer.",
+        "The Reaches are visible. They've always been visible. You just hadn't looked. Green and warm. A smear of light on the horizon. The pamphlet says 'favourable conditions year-round.' The pamphlet is out of date. Those parts are probably still accurate.",
+        "The tide mark on the wall is higher than your head. The water is the wrong colour. The wrong colour is the right colour here. The right colour is wrong everywhere else. The coat is on the hook. The coat is always on the hook.",
+    },
+}
+
+-------------------------------------------------------------------------------
+-- Check if a trigger matches current state
+-------------------------------------------------------------------------------
+
+local function triggerMatches(trigger, state)
+    if trigger.artefact and not state.collectedArtefacts[trigger.artefact] then
+        return false
+    end
+    if trigger.maxWatch and state.maxWatchReached < trigger.maxWatch then
+        return false
+    end
+    if trigger.hasWon ~= nil and state.hasWon ~= trigger.hasWon then
+        return false
+    end
+    if trigger.runs and state.totalRuns < trigger.runs then
+        return false
+    end
+    if trigger.neverWon and state.hasWon then
+        return false
+    end
+    if trigger.artefactCount and state.artefactCount < trigger.artefactCount then
+        return false
+    end
+    -- firstTime: only fire if this trigger hasn't been delivered before
+    if trigger.firstTime and state.deliveredTriggers then
+        local key = trigger.artefact or ("watch" .. (trigger.maxWatch or "")) or ("won" .. tostring(trigger.hasWon))
+        if state.deliveredTriggers[key] then return false end
+    end
+    return true
+end
+
+-------------------------------------------------------------------------------
+-- Get trigger-based lines for a character, given current state
+-------------------------------------------------------------------------------
+
+function Dialogue.triggerLines(character, state)
+    local triggers = Dialogue.TriggerLines[character]
+    if not triggers then return {} end
+
+    local lines = {}
+    for _, t in ipairs(triggers) do
+        if triggerMatches(t.trigger, state) then
+            table.insert(lines, t.line)
+        end
+    end
+    return lines
+end
+
+-- Get wharf ambient text for a given watch
+function Dialogue.wharfAmbient(watch)
+    local lines = Dialogue.WharfAmbient[watch] or Dialogue.WharfAmbient[1]
+    return lines[math.random(#lines)]
+end
+
+-------------------------------------------------------------------------------
 -- Public API
 -------------------------------------------------------------------------------
 

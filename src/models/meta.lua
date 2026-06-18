@@ -75,12 +75,24 @@ function Meta.load()
             totalWins = 0,
             totalLoansEver = 0,
             dialogueProgress = {},
+            -- NEW: narrative tracking
+            collectedArtefacts = {},   -- array of artefact IDs
+            maxWatchReached = 1,        -- highest watch reached across all runs
+            hasWon = false,             -- has the player ever won
+            uniqueModifiersUsed = {},   -- array of modifier types ever used
+            journalNewCount = 0,        -- unread new artefacts count
         }
     end
 
     -- Ensure unlockedNodes is a set-like table
     if not data.unlockedNodes then data.unlockedNodes = {} end
     if not data.dialogueProgress then data.dialogueProgress = {} end
+    -- NEW: ensure narrative fields exist
+    if not data.collectedArtefacts then data.collectedArtefacts = {} end
+    if not data.maxWatchReached then data.maxWatchReached = 1 end
+    if not data.hasWon then data.hasWon = false end
+    if not data.uniqueModifiersUsed then data.uniqueModifiersUsed = {} end
+    if not data.journalNewCount then data.journalNewCount = 0 end
 
     setmetatable(data, { __index = Meta })
     return data
@@ -198,6 +210,70 @@ function Meta:advanceDialogue(characters)
         self.dialogueProgress[c] = (self.dialogueProgress[c] or 0) + 1
     end
     self:save()
+end
+
+-------------------------------------------------------------------------------
+-- NEW: Artefact / narrative tracking
+-------------------------------------------------------------------------------
+
+function Meta:collectedArtefactSet()
+    local set = {}
+    for _, id in ipairs(self.collectedArtefacts) do set[id] = true end
+    return set
+end
+
+function Meta:hasArtefact(id)
+    return self:collectedArtefactSet()[id] == true
+end
+
+function Meta:addArtefact(id)
+    if self:hasArtefact(id) then return false end
+    table.insert(self.collectedArtefacts, id)
+    self.journalNewCount = self.journalNewCount + 1
+    self:save()
+    return true
+end
+
+function Meta:artefactCount()
+    return #self.collectedArtefacts
+end
+
+function Meta:clearJournalNewCount()
+    self.journalNewCount = 0
+    self:save()
+end
+
+function Meta:trackRunProgress(run)
+    -- Track max watch reached
+    if run.currentAct > self.maxWatchReached then
+        self.maxWatchReached = run.currentAct
+    end
+    -- Track if won
+    if run.outcome == "won" then
+        self.hasWon = true
+    end
+    -- Track unique modifiers used
+    for _, modType in ipairs(run.newModifiersUsed) do
+        local found = false
+        for _, existing in ipairs(self.uniqueModifiersUsed) do
+            if existing == modType then found = true; break end
+        end
+        if not found then
+            table.insert(self.uniqueModifiersUsed, modType)
+        end
+    end
+    self:save()
+end
+
+-- Build state for artefact roll
+function Meta:artefactRollState()
+    return {
+        collected = self:collectedArtefactSet(),
+        maxWatchReached = self.maxWatchReached,
+        hasWon = self.hasWon,
+        totalRuns = self.totalRuns,
+        uniqueModifiersUsed = #self.uniqueModifiersUsed,
+    }
 end
 
 return Meta
