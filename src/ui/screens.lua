@@ -364,10 +364,10 @@ function UI.GameScreen:update(dt)
         self.fustFlashTriggered = false
     end
 
-    -- Auto-advance result
+    -- Auto-advance result (2.5s gives the player time to absorb outcome + delta)
     if engine.phase == Engine.Phase.HAND_RESULT then
         self.resultTimer = self.resultTimer + dt
-        if self.resultTimer > 1.8 then
+        if self.resultTimer > 3.0 then
             self.resultTimer = 0
             engine:acknowledgeResult()
         end
@@ -393,8 +393,9 @@ function UI.GameScreen:draw()
     -- Cards
     self:drawCards(w, h)
 
-    -- HUD (always visible during play phases)
-    if engine.phase ~= Engine.Phase.SHOP and engine.phase ~= Engine.Phase.GAME_OVER then
+    -- HUD (visible during play phases, but NOT during tide — tide draws its own context)
+    if engine.phase ~= Engine.Phase.SHOP and engine.phase ~= Engine.Phase.GAME_OVER
+       and engine.phase ~= Engine.Phase.TIDE then
         self:drawHUD(w, h, ar, ag, ab)
     end
 
@@ -595,6 +596,7 @@ end
 function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
     local engine = self.engine
     local minBet = engine:effectiveMinimumBet()
+    local maxBet = engine.chipStack
 
     -- Run context block (upper area, fills dead space)
     local watchId = engine:watchIdentity()
@@ -642,7 +644,7 @@ function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
         printCentered(thrLines[1] or "", labelFont(), balY + 38, w)
     end
 
-    -- Divider line between context and bet controls
+    -- Divider line between context and the visual anchor
     local divY = balY + 60
     love.graphics.setColor(ar, ag, ab, 0.18)
     love.graphics.setLineWidth(1)
@@ -659,6 +661,22 @@ function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
         printCentered(label, labelFont(), divY + 16, w)
     end
 
+    -- ---------------------------------------------------------------------
+    -- Visual anchor: a centered deck card-back in the middle of the screen.
+    -- Fills the dead space between the context header and the bet controls
+    -- without adding any new game logic.
+    -- ---------------------------------------------------------------------
+    local anchorW = Renderer.CARD_W * 1.35
+    local anchorH = Renderer.CARD_H * 1.35
+    local anchorX = (w - anchorW) / 2
+    local anchorY = h * 0.45 - anchorH / 2
+    Renderer.drawCardBack(anchorX, anchorY, anchorW, anchorH, engine.run.accentColor)
+
+    -- "Place your bet" prompt, muted under the deck visual
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.setFont(labelFont())
+    printCentered("Place your bet", labelFont(), anchorY + anchorH + 10, w)
+
     -- Bet controls (moved up slightly to fill space better)
     local btnY = h - 130
     local btnW = 130
@@ -674,9 +692,10 @@ function UI.GameScreen:drawBetting(w, h, ar, ag, ab)
         ar * 0.05, ag * 0.05, ab * 0.05, 0.85,
         ar, ag, ab, 0.25)
 
+    -- Issue 7: bet range label shows actual min and max
     love.graphics.setColor(1, 1, 1, 0.45)
     love.graphics.setFont(smallFont())
-    local betLabel = "BET  (min " .. minBet .. ")"
+    local betLabel = "BET  " .. minBet .. "–" .. maxBet
     local blw = smallFont():getWidth(betLabel)
     love.graphics.print(betLabel, (w - blw) / 2, panelY + 4)
 
@@ -718,54 +737,99 @@ function UI.GameScreen:drawActionsBar(w, h, ar, ag, ab)
 end
 
 function UI.GameScreen:drawHandResult(w, h, ar, ag, ab)
-    local outcome = self.engine._pendingOutcome or "push"
-    local lastHand = self.engine.run.hands[#self.engine.run.hands]
+    local engine = self.engine
+    local outcome = engine._pendingOutcome or "push"
+    local lastHand = engine.run.hands[#engine.run.hands]
     local delta = lastHand and (lastHand.chipsAfter - lastHand.chipsBefore) or 0
 
     local label
     local labelColor
     if outcome == "playerWin" then label = "AFLOAT"; labelColor = {ar, ag, ab}
     elseif outcome == "dealerFust" then label = "DEALER FUST"; labelColor = {ar, ag, ab}
-    elseif outcome == "push" then label = "PUSH"; labelColor = {0.6, 0.6, 0.6}
-    elseif outcome == "playerFust" then label = "FUST"; labelColor = {0.8, 0.3, 0.3}
-    elseif outcome == "dealerWin" then label = "UNDER"; labelColor = {0.7, 0.35, 0.35}
+    elseif outcome == "push" then label = "PUSH"; labelColor = {0.7, 0.7, 0.75}
+    elseif outcome == "playerFust" then label = "FUST"; labelColor = {0.85, 0.35, 0.35}
+    elseif outcome == "dealerWin" then label = "UNDER"; labelColor = {0.75, 0.4, 0.4}
     else label = "—"; labelColor = {0.6, 0.6, 0.6} end
 
-    -- Semi-transparent band
-    love.graphics.setColor(0, 0, 0, 0.45)
-    love.graphics.rectangle("fill", 0, h * 0.36, w, h * 0.22)
+    -- Semi-transparent band (taller now to fit hand totals)
+    love.graphics.setColor(0, 0, 0, 0.5)
+    love.graphics.rectangle("fill", 0, h * 0.34, w, h * 0.28)
 
-    -- Outcome label
-    love.graphics.setColor(labelColor[1], labelColor[2], labelColor[3], 0.9)
+    -- Accent rule above the label for visual separation
+    love.graphics.setColor(ar, ag, ab, 0.55)
+    love.graphics.setLineWidth(2)
+    love.graphics.line(w * 0.4, h * 0.365, w * 0.6, h * 0.365)
+
+    -- Outcome label (largest font for max readability)
+    love.graphics.setColor(labelColor[1], labelColor[2], labelColor[3], 1.0)
     love.graphics.setFont(titleFont())
-    printCentered(label, titleFont(), h * 0.4, w)
+    printCentered(label, titleFont(), h * 0.38, w)
 
-    -- Chip delta
-    if delta ~= 0 then
-        local dStr = (delta > 0 and "+" or "") .. tostring(delta)
-        love.graphics.setColor(delta > 0 and ar or 0.8, delta > 0 and ag or 0.3, delta > 0 and ab or 0.3, 0.8)
-        love.graphics.setFont(headerFont())
-        printCentered(dStr, headerFont(), h * 0.4 + 36, w)
+    -- Hand totals (player vs dealer), if cards persisted
+    if lastHand and lastHand.playerCards and lastHand.dealerCards then
+        local pv = Card.evaluate(lastHand.playerCards)
+        local dv = Card.evaluate(lastHand.dealerCards)
+        local pStr = "YOU  " .. pv.soft .. (pv.soft ~= pv.hard and (" / " .. pv.hard) or "")
+        local dStr = "DEALER  " .. dv.soft
+        love.graphics.setColor(1, 1, 1, 0.6)
+        love.graphics.setFont(labelFont())
+        -- Place totals symmetrically around center
+        local pW = labelFont():getWidth(pStr)
+        local dW = labelFont():getWidth(dStr)
+        local totalsY = h * 0.38 + 34
+        love.graphics.print(pStr, w * 0.5 - 12 - pW, totalsY)
+        love.graphics.print(dStr, w * 0.5 + 12, totalsY)
     end
+
+    -- Chip delta (prominent)
+    if delta ~= 0 then
+        local dStr = (delta > 0 and "+" or "") .. tostring(delta) .. " chips"
+        love.graphics.setColor(delta > 0 and ar or 0.85, delta > 0 and ag or 0.35, delta > 0 and ab or 0.35, 0.95)
+        love.graphics.setFont(bigFont())
+        printCentered(dStr, bigFont(), h * 0.38 + 56, w)
+    end
+
+    -- "tap to continue" hint
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.setFont(smallFont())
+    printCentered("tap to continue", smallFont(), h * 0.38 + 88, w)
 end
 
 function UI.GameScreen:drawTide(w, h, ar, ag, ab)
     local engine = self.engine
-    local bet = self._pendingBet or 0
+    local bet = engine._pendingBet or 0
 
-    -- Dark band
-    love.graphics.setColor(0, 0, 0, 0.45)
-    love.graphics.rectangle("fill", 0, h * 0.2, w, h * 0.55)
+    -- Full-screen dark overlay
+    love.graphics.setColor(0.04, 0.04, 0.06, 0.92)
+    love.graphics.rectangle("fill", 0, 0, w, h)
+
+    -- Chip/bet context strip — simple, high-contrast, no panel
+    love.graphics.setColor(0.15, 0.15, 0.18, 1)
+    love.graphics.rectangle("fill", 0, 0, w, 56)
+
+    -- Chips (left)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setFont(font(9))
+    love.graphics.print("CHIPS", 28, 8)
+    love.graphics.setFont(font(22))
+    love.graphics.print(tostring(engine.chipStack or "?"), 28, 22)
+
+    -- Bet (right)
+    love.graphics.setFont(font(9))
+    local betLabel = "BET"
+    love.graphics.print(betLabel, w - 28 - font(9):getWidth(betLabel), 8)
+    love.graphics.setFont(font(22))
+    local betStr = tostring(bet)
+    love.graphics.print(betStr, w - 28 - font(22):getWidth(betStr), 22)
 
     -- Title
-    love.graphics.setColor(1, 1, 1, 0.55)
+    love.graphics.setColor(1, 1, 1, 0.6)
     love.graphics.setFont(labelFont())
-    printCentered("THE TIDE", labelFont(), h * 0.22, w)
+    printCentered("THE TIDE", labelFont(), h * 0.2, w)
 
-    love.graphics.setColor(1, 1, 1, 0.3)
+    love.graphics.setColor(1, 1, 1, 0.35)
     love.graphics.setFont(smallFont())
-    local sub = "Bet: " .. bet .. " — choose your tide"
-    printCentered(sub, smallFont(), h * 0.22 + 16, w)
+    printCentered("Choose your tide", smallFont(), h * 0.2 + 16, w)
 
     -- Three tide options as cards
     local cardW = math.min(110, (w - 72) / 3)
@@ -773,7 +837,7 @@ function UI.GameScreen:drawTide(w, h, ar, ag, ab)
     local spacing = 12
     local totalW = 3 * cardW + 2 * spacing
     local startX = (w - totalW) / 2
-    local cardY = h * 0.3
+    local cardY = h * 0.28
 
     local tides = {
         { key = "rising",  name = "RISING",  desc = "+20% payout",  cost = "Dealer draws\none extra card" },
@@ -860,15 +924,47 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
     love.graphics.setColor(0.03, 0.03, 0.04, 1)
     love.graphics.rectangle("fill", 0, 0, w, h)
 
+    -- ---------------------------------------------------------------------
+    -- Issue 5: outcome recap banner — one compact line above SALVAGE.
+    -- Tells the player what just happened before the salvage choices appear.
+    -- ---------------------------------------------------------------------
+    local lastHand = engine.run.hands[#engine.run.hands]
+    local outcome = engine._pendingOutcome
+    if lastHand and outcome then
+        local delta = lastHand.chipsAfter - lastHand.chipsBefore
+        local oLabel
+        local oColor
+        if outcome == "playerWin" then oLabel = "AFLOAT"; oColor = {ar, ag, ab}
+        elseif outcome == "dealerFust" then oLabel = "DEALER FUST"; oColor = {ar, ag, ab}
+        elseif outcome == "push" then oLabel = "PUSH"; oColor = {0.7, 0.7, 0.75}
+        elseif outcome == "playerFust" then oLabel = "FUST"; oColor = {0.85, 0.35, 0.35}
+        elseif outcome == "dealerWin" then oLabel = "UNDER"; oColor = {0.75, 0.4, 0.4}
+        else oLabel = outcome:upper(); oColor = {0.7, 0.7, 0.75} end
+
+        love.graphics.setColor(oColor[1], oColor[2], oColor[3], 0.75)
+        love.graphics.setFont(labelFont())
+        local leftStr = "LAST HAND: " .. oLabel
+        local leftW = labelFont():getWidth(leftStr)
+        love.graphics.print(leftStr, w * 0.5 - leftW - 12, h * 0.035)
+
+        if delta ~= 0 then
+            local dStr = (delta > 0 and "+" or "") .. tostring(delta) .. " chips"
+            love.graphics.setColor(delta > 0 and ar or 0.85, delta > 0 and ag or 0.35,
+                                   delta > 0 and ab or 0.35, 0.85)
+            love.graphics.setFont(labelFont())
+            love.graphics.print(dStr, w * 0.5 + 12, h * 0.035)
+        end
+    end
+
     -- Title
     love.graphics.setColor(1, 1, 1, 0.55)
     love.graphics.setFont(labelFont())
-    printCentered("SALVAGE", labelFont(), h * 0.06, w)
+    printCentered("SALVAGE", labelFont(), h * 0.08, w)
 
     love.graphics.setColor(1, 1, 1, 0.3)
     love.graphics.setFont(smallFont())
     local subLines = wrapText("Take the flotsam, or seed the reef for chips", smallFont(), w - 48)
-    printCentered(subLines[1] or "", smallFont(), h * 0.06 + 16, w)
+    printCentered(subLines[1] or "", smallFont(), h * 0.08 + 16, w)
 
     -- Artefact found display
     if engine.lastArtefactFound then
@@ -977,21 +1073,28 @@ function UI.GameScreen:drawSalvage(w, h, ar, ag, ab)
         local nameW = labelFont():getWidth(name)
         love.graphics.print(name, cx + (vCardW - nameW) / 2, vCardY + vCardH + 4)
 
-        -- Effect description (wrapped, max 2 lines)
+        -- Effect description (short summary, 2 lines max)
         love.graphics.setColor(1, 1, 1, 0.35)
         love.graphics.setFont(smallFont())
-        local desc = VoyageCard.Description[vtype] or ""
-        local descLines = wrapText(desc, smallFont(), vCardW + 10)
+        local shortDescs = {
+            deadweight = "Counts as 13.\nNo reduction.",
+            undertow = "Counts as 0.\nDraw one more card.",
+            squall = "Counts as 3.\nAces become 1.",
+            fogBank = "Hidden value.\nRevealed at resolve.",
+        }
+        local shortDesc = shortDescs[vtype] or ""
+        local descLines = {}
+        for line in shortDesc:gmatch("[^\n]+") do table.insert(descLines, line) end
         for j, line in ipairs(descLines) do
             if j > 2 then break end
             local descW = smallFont():getWidth(line)
             love.graphics.print(line, cx + (vCardW - descW) / 2, vCardY + vCardH + 20 + (j - 1) * 11)
         end
 
-        -- Key hint
+        -- Key hint (moved down to accommodate desc)
         love.graphics.setColor(ar, ag, ab, 0.4)
         love.graphics.setFont(smallFont())
-        love.graphics.print(tostring(i), cx + (vCardW - smallFont():getWidth(tostring(i))) / 2, vCardY + vCardH + 46)
+        love.graphics.print(tostring(i), cx + (vCardW - smallFont():getWidth(tostring(i))) / 2, vCardY + vCardH + 48)
     end
 end
 
@@ -1163,8 +1266,8 @@ end
 
 function UI.GameScreen:drawGameOver(w, h, ar, ag, ab)
     local engine = self.engine
-    local outcome = engine.run.outcome
     local meta = self.meta
+    local outcome = engine.run.outcome
 
     -- Dark background
     love.graphics.setColor(0.04, 0.04, 0.05, 1)
@@ -1187,19 +1290,84 @@ function UI.GameScreen:drawGameOver(w, h, ar, ag, ab)
 
     love.graphics.setColor(titleColor[1], titleColor[2], titleColor[3], 0.9)
     love.graphics.setFont(titleFont())
-    printCentered(title, titleFont(), h * 0.12, w)
+    printCentered(title, titleFont(), h * 0.1, w)
 
-    -- Flotsam earned
-    love.graphics.setColor(1, 1, 1, 0.55)
-    love.graphics.setFont(bodyFont())
-    local flotsamStr = "+" .. engine.run.flotsamEarned .. " Flotsam"
-    printCentered(flotsamStr, bodyFont(), h * 0.12 + 38, w)
-
-    -- Character reactions
+    -- ---------------------------------------------------------------------
+    -- Issue 6: run summary block.
+    -- Shows final chips, hands played, artefacts found this run, and a
+    -- brief one-line narrative summary ("Crossed 3 watches" or
+    -- "Foundered in Watch 2").
+    -- ---------------------------------------------------------------------
     local actsCompleted = engine.run.currentAct - 1
     if outcome == "won" then actsCompleted = actsCompleted + 1 end
 
-    local y = h * 0.24
+    -- Flotsam earned (kept from previous version)
+    love.graphics.setColor(ar, ag, ab, 0.75)
+    love.graphics.setFont(bodyFont())
+    local flotsamStr = "+" .. engine.run.flotsamEarned .. " Flotsam"
+    printCentered(flotsamStr, bodyFont(), h * 0.1 + 34, w)
+
+    -- Stats panel
+    local statsY = h * 0.21
+    local statsH = 92
+    drawPanel(w * 0.08, statsY, w * 0.84, statsH, 10,
+        ar * 0.05, ag * 0.05, ab * 0.05, 0.85,
+        ar, ag, ab, 0.3)
+
+    -- Column 1: final chips
+    local colW = (w * 0.84) / 3
+    local col1X = w * 0.08
+    love.graphics.setColor(ar, ag, ab, 0.65)
+    love.graphics.setFont(smallFont())
+    love.graphics.print("FINAL CHIPS", col1X + 16, statsY + 12)
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.setFont(bigFont())
+    love.graphics.print(tostring(engine.run.chipStack), col1X + 16, statsY + 30)
+
+    -- Column 2: hands played
+    local col2X = col1X + colW
+    love.graphics.setColor(ar, ag, ab, 0.65)
+    love.graphics.setFont(smallFont())
+    love.graphics.print("HANDS", col2X + 16, statsY + 12)
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.setFont(bigFont())
+    love.graphics.print(tostring(#engine.run.hands), col2X + 16, statsY + 30)
+
+    -- Column 3: artefacts found this run (computed from meta snapshot)
+    -- We track how many artefacts existed when this run started by capturing
+    -- the count the first time we draw the game over screen this run.
+    if not self._runStartArtefactCount then
+        -- Baseline: current meta count minus any from this run's salvages.
+        -- The engine's lastArtefactFound flag tells us if the final salvage
+        -- found one. A simpler fallback: total meta count is always >=
+        -- "this run" count, so we display it as the total found to date,
+        -- and annotate "this run" only when we can be certain.
+        self._runStartArtefactCount = math.max(0, meta:artefactCount() - (engine.lastArtefactFound and 1 or 0))
+    end
+    local artefactsThisRun = math.max(0, meta:artefactCount() - self._runStartArtefactCount)
+    local col3X = col2X + colW
+    love.graphics.setColor(ar, ag, ab, 0.65)
+    love.graphics.setFont(smallFont())
+    love.graphics.print("ARTEFACTS", col3X + 16, statsY + 12)
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.setFont(bigFont())
+    love.graphics.print(tostring(artefactsThisRun), col3X + 16, statsY + 30)
+
+    -- Brief one-line run summary
+    local summary
+    if outcome == "won" then
+        summary = string.format("Crossed %d watch%s of %d",
+            actsCompleted, actsCompleted == 1 and "" or "es", engine:effectiveActCount())
+    else
+        summary = string.format("Foundered in Watch %d of %d",
+            engine.run.currentAct, engine:effectiveActCount())
+    end
+    love.graphics.setColor(1, 1, 1, 0.5)
+    love.graphics.setFont(labelFont())
+    printCentered(summary, labelFont(), statsY + 70, w)
+
+    -- Character reactions (start lower to make room for the stats panel)
+    local y = statsY + statsH + 14
     for _, charKey in ipairs(Dialogue.Characters) do
         local requiredNode = Dialogue.CharacterRequiredNode[charKey]
         if not requiredNode or meta:hasUnlock(requiredNode) then
@@ -1215,9 +1383,10 @@ function UI.GameScreen:drawGameOver(w, h, ar, ag, ab)
             love.graphics.setFont(smallBodyFont())
             local lines = wrapText(line, smallBodyFont(), w - 56)
             for i, l in ipairs(lines) do
+                if i > 2 then break end
                 love.graphics.print(l, 28, y + 16 + (i - 1) * 18)
             end
-            y = y + 16 + #lines * 18 + 18
+            y = y + 16 + math.min(#lines, 2) * 18 + 14
         end
     end
 

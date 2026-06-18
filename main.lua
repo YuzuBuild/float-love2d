@@ -42,6 +42,15 @@ function love.load(arg)
         return
     end
 
+    -- Ensure window matches our target size (fixes Xvfb/headless display issues)
+    love.window.setMode(390, 844, {
+        resizable = true,
+        vsync = 1,
+        minwidth = 320,
+        minheight = 568,
+        highdpi = true,
+    })
+
     -- Load meta-progression
     meta = Meta.load()
 
