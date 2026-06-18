@@ -167,6 +167,189 @@ local function printLinesCentered(lines, f, startY, w, lineH)
 end
 
 -- ===========================================================================
+-- Tutorial Screen (8-step onboarding)
+-- ===========================================================================
+
+UI.TutorialScreen = {}
+UI.TutorialScreen.__index = UI.TutorialScreen
+
+local tutorialSteps = {
+    {
+        title = "Welcome to Float",
+        body = "You're a gambler on a small boat, trying to reach port before your chips run dry.",
+        body2 = "Each voyage is 20 hands of blackjack across 4 watches. Survive all four to win.",
+    },
+    {
+        title = "Betting",
+        body = "Before each hand, place a bet. Use -/+ to adjust, then press DEAL.",
+        body2 = "Your minimum bet depends on the voyage conditions. Bet smart — chips are scarce.",
+    },
+    {
+        title = "The Tide",
+        body = "After betting, choose a tide before cards are dealt:",
+        body2 = "RISING: +20% payout, but dealer draws an extra card.\nFALLING: -20% payout, but you see the dealer's hole card.\nFLAT: No change. Safe passage.",
+    },
+    {
+        title = "Playing Your Hand",
+        body = "HIT to draw a card. STAND to end your turn. DOUBLE to double your bet and draw exactly one card.",
+        body2 = "Goal: get closer to 21 than the dealer without going over. Aces count 1 or 11.",
+    },
+    {
+        title = "Salvage",
+        body = "After each hand, choose: take the FLOTSAM (meta-currency) or SEED THE REEF (gain chips, but poison the deck with voyage cards).",
+        body2 = "Flotsam persists between runs. Seeding helps short-term but adds chaos to future hands.",
+    },
+    {
+        title = "The Wharf (Shop)",
+        body = "Between watches, visit the Wharf to buy modifiers with chips.",
+        body2 = "Modifiers change the rules: see hole cards, boost payouts, gain bonus chips. Pick what fits your strategy.",
+    },
+    {
+        title = "The Four Watches",
+        body = "Watch 1 CALM: standard rules.\nWatch 2 TIDE: odd hands pay 1.5x, even hands pay 0.75x.\nWatch 3 FOG: dealer's hole card is hidden, reef seeds 2 cards.\nWatch 4 THE REACHES: modifier payouts and costs are doubled.",
+        body2 = "Each watch has a chip threshold. Fall below it and you FOUNDER.",
+    },
+    {
+        title = "The Goal",
+        body = "Cross all four watches with chips to spare and you're AFLOAT — you win.",
+        body2 = "Find artefacts in salvage to unlock lore in your journal. Build toward the long game across runs.\n\nPress DEPART to begin.",
+    },
+}
+
+function UI.TutorialScreen.new(accentColor, onClose)
+    local self = setmetatable({}, UI.TutorialScreen)
+    self.accentColor = accentColor or "teal"
+    self.onClose = onClose
+    self.step = 1
+    return self
+end
+
+function UI.TutorialScreen:draw()
+    local w, h = love.graphics.getDimensions()
+    local ar, ag, ab = accent(self.accentColor)
+
+    -- Full dark background
+    love.graphics.setColor(0.04, 0.04, 0.05, 0.98)
+    love.graphics.rectangle("fill", 0, 0, w, h)
+
+    -- Accent wash at top
+    love.graphics.setColor(ar, ag, ab, 0.04)
+    love.graphics.rectangle("fill", 0, 0, w, 160)
+
+    -- Step indicator (dots)
+    local dotY = 40
+    local dotR = 4
+    local dotSpacing = 16
+    local dotsW = #tutorialSteps * dotSpacing
+    local dotsX = (w - dotsW) / 2
+    for i = 1, #tutorialSteps do
+        if i == self.step then
+            love.graphics.setColor(ar, ag, ab, 0.9)
+            love.graphics.circle("fill", dotsX + (i - 1) * dotSpacing + dotR, dotY, dotR)
+        elseif i < self.step then
+            love.graphics.setColor(ar, ag, ab, 0.4)
+            love.graphics.circle("fill", dotsX + (i - 1) * dotSpacing + dotR, dotY, dotR)
+        else
+            love.graphics.setColor(1, 1, 1, 0.15)
+            love.graphics.circle("line", dotsX + (i - 1) * dotSpacing + dotR, dotY, dotR)
+        end
+    end
+
+    -- Title
+    local step = tutorialSteps[self.step]
+    love.graphics.setColor(1, 1, 1, 0.9)
+    love.graphics.setFont(titleFont())
+    printCentered(step.title, titleFont(), 80, w)
+
+    -- Accent rule
+    love.graphics.setColor(ar, ag, ab, 0.35)
+    love.graphics.setLineWidth(1.5)
+    local ruleW = w * 0.25
+    love.graphics.line((w - ruleW) / 2, 118, (w + ruleW) / 2, 118)
+
+    -- Body text (wrapped)
+    love.graphics.setColor(1, 1, 1, 0.72)
+    love.graphics.setFont(bodyFont())
+    local bodyLines = wrapText(step.body, bodyFont(), w - 64)
+    local bodyY = 142
+    for i, line in ipairs(bodyLines) do
+        love.graphics.print(line, centerX(line, bodyFont(), w), bodyY + (i - 1) * 22)
+    end
+
+    -- Body2 text (wrapped, smaller)
+    if step.body2 then
+        love.graphics.setColor(1, 1, 1, 0.5)
+        love.graphics.setFont(smallBodyFont())
+        local body2Lines = wrapText(step.body2, smallBodyFont(), w - 64)
+        local body2Y = bodyY + #bodyLines * 22 + 16
+        for i, line in ipairs(body2Lines) do
+            love.graphics.print(line, centerX(line, smallBodyFont(), w), body2Y + (i - 1) * 18)
+        end
+    end
+
+    -- Navigation buttons
+    local btnY = h - 90
+
+    -- Back button (if not first step)
+    if self.step > 1 then
+        drawButton("BACK", 24, btnY, 100, 44, ar, ag, ab, false)
+    end
+
+    -- Next/Depart button
+    local isLast = self.step == #tutorialSteps
+    local nextLabel = isLast and "DEPART" or "NEXT"
+    local nextW = isLast and 160 or 120
+    drawButton(nextLabel, w - 24 - nextW, btnY, nextW, 44, ar, ag, ab, true)
+
+    -- Skip button (if not last)
+    if not isLast then
+        love.graphics.setColor(1, 1, 1, 0.3)
+        love.graphics.setFont(smallFont())
+        printCentered("press Return to continue", smallFont(), h - 36, w)
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function UI.TutorialScreen:mousepressed(mx, my, button)
+    local w, h = love.graphics.getDimensions()
+    local btnY = h - 90
+    local isLast = self.step == #tutorialSteps
+
+    -- Back button
+    if self.step > 1 and inRect(mx, my, 24, btnY, 100, 44) then
+        self.step = self.step - 1
+        return
+    end
+
+    -- Next/Depart button
+    local nextW = isLast and 160 or 120
+    if inRect(mx, my, w - 24 - nextW, btnY, nextW, 44) then
+        if isLast then
+            if self.onClose then self.onClose() end
+        else
+            self.step = self.step + 1
+        end
+        return
+    end
+end
+
+function UI.TutorialScreen:keypressed(key)
+    local isLast = self.step == #tutorialSteps
+    if key == "return" or key == "space" or key == "right" then
+        if isLast then
+            if self.onClose then self.onClose() end
+        else
+            self.step = self.step + 1
+        end
+    elseif key == "left" and self.step > 1 then
+        self.step = self.step - 1
+    elseif key == "escape" then
+        if self.onClose then self.onClose() end
+    end
+end
+
+-- ===========================================================================
 -- Departure Screen
 -- ===========================================================================
 
@@ -1257,11 +1440,17 @@ function UI.GameScreen:drawShop(w, h, ar, ag, ab)
 
     -- Float a loan button
     if not engine.run.loanUsedThisAct then
-        drawButton("Float a Loan  +" .. Run.LoanAmount, 24, h - 120, w - 48, 42, ar, ag, ab, false)
+        drawButton("Float a Loan  +", 24, h - 120, w - 48, 42, ar, ag, ab, false)
+        love.graphics.setColor(1, 1, 1, 0.35)
+        love.graphics.setFont(smallFont())
+        printCentered("[L] loan", smallFont(), h - 82, w)
     end
 
     -- Depart button
     drawButton("DEPART", 24, h - 68, w - 48, 44, ar, ag, ab, true)
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.setFont(smallFont())
+    printCentered("[Return] depart  [1-3] buy", smallFont(), h - 24, w)
 end
 
 function UI.GameScreen:drawGameOver(w, h, ar, ag, ab)
@@ -1763,6 +1952,21 @@ function UI.GameScreen:keypressed(key)
         elseif key == "1" then engine:chooseSalvage("reef", engine.draftCandidates[1])
         elseif key == "2" then engine:chooseSalvage("reef", engine.draftCandidates[2])
         elseif key == "3" then engine:chooseSalvage("reef", engine.draftCandidates[3]) end
+    elseif engine.phase == Engine.Phase.SHOP then
+        if key == "return" or key == "space" then
+            engine:leaveShop()
+        elseif key == "l" and not engine.run.loanUsedThisAct then
+            engine:takeLoan()
+        elseif key == "1" then
+            local offer = engine:getShopOffer()
+            if offer[1] then engine:purchaseModifier(offer[1]) end
+        elseif key == "2" then
+            local offer = engine:getShopOffer()
+            if offer[2] then engine:purchaseModifier(offer[2]) end
+        elseif key == "3" then
+            local offer = engine:getShopOffer()
+            if offer[3] then engine:purchaseModifier(offer[3]) end
+        end
     elseif engine.phase == Engine.Phase.GAME_OVER then
         if key == "return" or key == "space" then
             if self.onNewRun then self.onNewRun() end

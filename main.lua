@@ -85,7 +85,11 @@ function beginRun(accentColor, condition)
 end
 
 function showTutorial()
-    -- TODO: tutorial screen
+    local accentColor = Run.randomAccent()
+    local screen = UI.TutorialScreen.new(accentColor, function()
+        requestDeparture("inProgress")
+    end)
+    SceneManager.switch(screen)
 end
 
 function love.update(dt)
